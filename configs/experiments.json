@@ -1,0 +1,80 @@
+{
+  "image": "vllm/vllm-openai:v0.10.2",
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "port": 8000,
+  "server_defaults": {
+    "dtype": "half",
+    "max_model_len": 2048,
+    "gpu_memory_utilization": 0.85
+  },
+  "server_profiles": {
+    "serial": {
+      "max_num_seqs": 1,
+      "prefix_caching": false
+    },
+    "standard": {
+      "max_num_seqs": 8,
+      "prefix_caching": false
+    },
+    "prefix": {
+      "max_num_seqs": 8,
+      "prefix_caching": true
+    }
+  },
+  "benchmarks": [
+    {
+      "name": "cb_serial",
+      "profile": "serial",
+      "workload": "mixed",
+      "concurrency": 8,
+      "requests": 60,
+      "warmup": 8,
+      "output_tokens": 64
+    },
+    {
+      "name": "cb_batch",
+      "profile": "standard",
+      "workload": "mixed",
+      "concurrency": 8,
+      "requests": 60,
+      "warmup": 8,
+      "output_tokens": 64
+    },
+    {
+      "name": "cb_scale_1",
+      "profile": "standard",
+      "workload": "mixed",
+      "concurrency": 1,
+      "requests": 60,
+      "warmup": 8,
+      "output_tokens": 64
+    },
+    {
+      "name": "cb_scale_4",
+      "profile": "standard",
+      "workload": "mixed",
+      "concurrency": 4,
+      "requests": 60,
+      "warmup": 8,
+      "output_tokens": 64
+    },
+    {
+      "name": "pc_off",
+      "profile": "standard",
+      "workload": "shared-prefix",
+      "concurrency": 8,
+      "requests": 60,
+      "warmup": 8,
+      "output_tokens": 32
+    },
+    {
+      "name": "pc_on",
+      "profile": "prefix",
+      "workload": "shared-prefix",
+      "concurrency": 8,
+      "requests": 60,
+      "warmup": 8,
+      "output_tokens": 32
+    }
+  ]
+}

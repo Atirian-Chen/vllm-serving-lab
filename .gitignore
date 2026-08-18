@@ -1,0 +1,17 @@
+.venv/
+.cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-tmp/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Raw benchmark runs are machine-specific and can be large.
+results/raw/*
+!results/raw/.gitkeep
+!results/raw/20260818-rtx4070-fp16/
+!results/raw/20260818-rtx4070-fp16/*.json

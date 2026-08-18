@@ -1,0 +1,7 @@
+config,runs,workload,concurrency,server_max_num_seqs,prefix_caching,success_rate,request_throughput_per_s,effective_input_tokens_per_s,output_tokens_per_s,ttft_p50_ms,ttft_p95_ms,latency_p50_ms,latency_p95_ms,tpot_p50_ms,tpot_p95_ms,gpu_memory_peak_mib,gpu_utilization_mean_percent
+cb_serial,3,mixed,8,1,False,1.0,0.1451,84.2382,9.2846,46824.821,55439.062,53113.019,62087.945,102.886,122.475,7948.0,97.897
+cb_batch,3,mixed,8,8,False,1.0,4.0476,2350.3197,259.0479,316.596,512.597,1863.03,2212.221,24.672,28.281,7947.0,95.0
+cb_scale_1,3,mixed,1,8,False,1.0,0.1699,98.6498,10.873,408.528,1187.218,5939.58,6707.542,84.765,97.57,7922.5,95.5135
+cb_scale_4,3,mixed,4,8,False,1.0,0.2626,152.4673,16.8047,4845.862,16418.168,14106.0,33075.895,114.704,252.96,,
+pc_off,3,shared-prefix,8,8,False,1.0,0.2077,211.8933,6.645,8753.225,31243.985,39635.236,57947.327,859.346,1484.019,,
+pc_on,3,shared-prefix,8,8,True,1.0,4.1365,4220.8456,132.3668,204.925,1099.211,1721.07,3326.526,44.279,71.871,,
