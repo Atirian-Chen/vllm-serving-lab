@@ -115,8 +115,16 @@ def build_report(rows: list[dict[str, object]], runs: list[dict[str, object]]) -
     system = first["system"]
     assert isinstance(config, dict)
     assert isinstance(system, dict)
-    total_requests = sum(int(run["summary"]["request_count"]) for run in runs)  # type: ignore[index]
-    total_successes = sum(int(run["summary"]["success_count"]) for run in runs)  # type: ignore[index]
+    total_requests = 0
+    total_successes = 0
+    for run in runs:
+        summary = run.get("summary", {})
+        if not isinstance(summary, dict):
+            continue
+        # Keep report generation compatible with small hand-written fixtures that
+        # only contain the latency/throughput metrics used by comparisons.
+        total_requests += int(summary.get("request_count", 0))
+        total_successes += int(summary.get("success_count", 0))
 
     lines = [
         "# vLLM Serving Benchmark Report",
