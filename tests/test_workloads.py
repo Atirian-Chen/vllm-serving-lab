@@ -17,3 +17,9 @@ def test_shared_prefix_is_identical_before_question_suffix() -> None:
     assert len(set(prefixes)) == 1
     assert all(item.output_tokens == 64 for item in items)
 
+
+def test_coding_agent_workload_has_tenant_prefixes_and_reuse_distance() -> None:
+    items = build_workload("coding-agent", 20, 64, 2026)
+    assert len({item.prefix_id for item in items}) > 1
+    assert all(item.expected_shared_tokens == 512 for item in items)
+    assert any(item.reuse_distance is not None for item in items)

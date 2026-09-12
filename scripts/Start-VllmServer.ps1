@@ -14,10 +14,12 @@ param(
     [int]$Port = 8000,
     [int]$MaxModelLen = 2048,
     [double]$GpuMemoryUtilization = 0.85,
+    [long]$KvCacheMemoryBytes = 0,
     [string]$Dtype = "half",
     [string]$ContainerName = "vllm-serving-lab-server",
     [string]$HuggingFaceCache,
     [string]$VllmCache,
+    [switch]$Offline,
     [int]$StartupTimeoutSeconds = 1800
 )
 
@@ -58,7 +60,12 @@ $dockerArgs = @(
     "--name", $ContainerName,
     "--publish", "${Port}:8000",
     "--volume", "${HuggingFaceCache}:/root/.cache/huggingface",
-    "--volume", "${VllmCache}:/root/.cache/vllm",
+    "--volume", "${VllmCache}:/root/.cache/vllm"
+)
+if ($Offline) {
+    $dockerArgs += @("--env", "HF_HUB_OFFLINE=1")
+}
+$dockerArgs += @(
     $Image,
     "--model", $Model,
     "--served-model-name", $Model,
@@ -67,6 +74,9 @@ $dockerArgs = @(
     "--gpu-memory-utilization", $GpuMemoryUtilization,
     "--max-num-seqs", $MaxNumSeqs
 )
+if ($KvCacheMemoryBytes -gt 0) {
+    $dockerArgs += @("--kv-cache-memory-bytes", "$KvCacheMemoryBytes")
+}
 
 if ($EnablePrefixCaching) {
     $dockerArgs += "--enable-prefix-caching"

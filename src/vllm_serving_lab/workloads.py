@@ -17,6 +17,11 @@ class WorkloadItem:
     prompt: str
     target_prompt_words: int
     output_tokens: int
+    session_id: str | None = None
+    prefix_id: str | None = None
+    expected_shared_tokens: int = 0
+    reuse_distance: int | None = None
+    idle_gap_ms: int = 0
 
 
 def _word_block(word_count: int, offset: int = 0) -> str:
@@ -67,9 +72,52 @@ def build_shared_prefix_workload(count: int, output_tokens: int, seed: int) -> l
                 prompt=prompt,
                 target_prompt_words=shared_words + suffix_words,
                 output_tokens=output_tokens,
+                session_id=f"session-{index % 8:02d}",
+                prefix_id="shared-spec",
+                expected_shared_tokens=shared_words,
             )
         )
 
+    return items
+
+
+def build_coding_agent_workload(
+    count: int, output_tokens: int, seed: int, tenants: int = 8
+) -> list[WorkloadItem]:
+    """Model a multi-tenant coding/agent service with hot and cold prefixes.
+
+    Each tenant owns a stable system/tool/repository prefix. Requests are emitted
+    in Zipf-like order so reuse distance and cache pressure are measurable.
+    """
+    if tenants <= 0:
+        raise ValueError("tenants must be positive")
+    rng = random.Random(seed)
+    prefixes = []
+    prefix_words = 512
+    for tenant in range(tenants):
+        prefix = (
+            f"Tenant {tenant:03d} coding agent system and tool contract. "
+            "Repository summary and safe execution policy. "
+            + _word_block(prefix_words, tenant)
+        )
+        prefixes.append(prefix)
+    items: list[WorkloadItem] = []
+    last_seen: dict[int, int] = {}
+    for index in range(count):
+        rank = min(tenants - 1, int((rng.random() ** 2) * tenants))
+        suffix = (
+            f"\nTask {index:04d}: inspect changed files, run tests, and propose a patch. "
+            + _word_block(48 + index % 16, rng.randrange(len(COMMON_WORDS)))
+        )
+        reuse_distance = None if rank not in last_seen else index - last_seen[rank]
+        last_seen[rank] = index
+        items.append(WorkloadItem(
+            request_id=f"agent-{index:04d}", prompt=prefixes[rank] + suffix,
+            target_prompt_words=prefix_words + 60 + index % 16,
+            output_tokens=output_tokens, session_id=f"tenant-{rank:03d}",
+            prefix_id=f"tenant-prefix-{rank:03d}", expected_shared_tokens=prefix_words,
+            reuse_distance=reuse_distance,
+        ))
     return items
 
 
@@ -82,5 +130,6 @@ def build_workload(kind: str, count: int, output_tokens: int, seed: int) -> list
         return build_mixed_workload(count, output_tokens, seed)
     if kind == "shared-prefix":
         return build_shared_prefix_workload(count, output_tokens, seed)
+    if kind == "coding-agent":
+        return build_coding_agent_workload(count, output_tokens, seed)
     raise ValueError(f"unsupported workload: {kind}")
-

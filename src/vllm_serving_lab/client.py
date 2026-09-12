@@ -107,6 +107,9 @@ class StreamingCompletionClient:
                 tpot_ms=round(tpot_ms, 6) if tpot_ms is not None else None,
                 http_status=status_code,
                 error=None,
+                session_id=item.session_id, prefix_id=item.prefix_id,
+                expected_shared_tokens=item.expected_shared_tokens,
+                reuse_distance=item.reuse_distance, idle_gap_ms=item.idle_gap_ms,
             )
         except Exception as error:  # Request-level failures belong in the result artifact.
             return RequestResult(
@@ -120,5 +123,7 @@ class StreamingCompletionClient:
                 tpot_ms=None,
                 http_status=status_code,
                 error=f"{type(error).__name__}: {error}",
+                session_id=item.session_id, prefix_id=item.prefix_id,
+                expected_shared_tokens=item.expected_shared_tokens,
+                reuse_distance=item.reuse_distance, idle_gap_ms=item.idle_gap_ms,
             )
-

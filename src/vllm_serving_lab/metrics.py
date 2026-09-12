@@ -18,6 +18,11 @@ class RequestResult:
     tpot_ms: float | None
     http_status: int | None
     error: str | None
+    session_id: str | None = None
+    prefix_id: str | None = None
+    expected_shared_tokens: int = 0
+    reuse_distance: int | None = None
+    idle_gap_ms: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -88,4 +93,3 @@ def summarize_results(
         ),
         "gpu_sample_count": len(gpu_samples),
     }
-

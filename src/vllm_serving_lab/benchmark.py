@@ -170,7 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Benchmark a vLLM OpenAI-compatible streaming endpoint.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--model", required=True)
-    parser.add_argument("--workload", choices=("mixed", "shared-prefix"), required=True)
+    parser.add_argument("--workload", choices=("mixed", "shared-prefix", "coding-agent"), required=True)
     parser.add_argument("--config-name", required=True)
     parser.add_argument("--concurrency", type=int, required=True)
     parser.add_argument("--requests", type=int, default=120)
