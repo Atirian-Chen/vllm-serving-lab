@@ -32,11 +32,13 @@ try {
                     -Port $Port -ContainerName $container -Offline:$Offline | Out-Null
                 try {
                     for ($repeat = 1; $repeat -le $Repeats; $repeat++) {
+                        $requestCount = $Requests * ($background + 1)
+                        $prefixArgument = if ($prefixCaching) { "--prefix-caching" } else { "--no-prefix-caching" }
                         & $Python -m vllm_serving_lab.benchmark --base-url "http://127.0.0.1:$Port" --model $model `
-                            --workload session-chat --config-name $name --concurrency 8 --requests $Requests `
+                            --workload session-chat --config-name $name --concurrency 8 --requests $requestCount `
                             --warmup 8 --output-tokens 32 --server-max-num-seqs 8 --server-image $image `
                             --run-number $repeat --sessions $Sessions --rounds $Rounds --idle-gap-ms $gap `
-                            --background-unique-prefixes $background --prefix-caching:$prefixCaching `
+                            --background-unique-prefixes $background $prefixArgument `
                             --output (Join-Path $scenarioDir ("run{0}.json" -f $repeat))
                         if ($LASTEXITCODE -ne 0) { throw "Prefix scenario failed: $name repeat $repeat." }
                     }
