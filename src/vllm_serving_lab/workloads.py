@@ -181,7 +181,10 @@ def build_session_chat_workload(
                 prompt=prefix + suffix, target_prompt_words=shared + 50 + round_index * 4,
                 output_tokens=output_tokens, session_id=f"session-{session:02d}",
                 prefix_id=f"session-prefix-{session:02d}", expected_shared_tokens=shared,
-                reuse_distance=reuse_distance, idle_gap_ms=idle_gap_ms,
+                # The first turn is a cold start; apply the idle gap only when
+                # returning to a session whose prefix has been seen before.
+                reuse_distance=reuse_distance,
+                idle_gap_ms=idle_gap_ms if reuse_distance is not None else 0,
                 role="foreground", background_unique_prefixes=background_unique_prefixes,
             ))
             history_words[session] += 64
