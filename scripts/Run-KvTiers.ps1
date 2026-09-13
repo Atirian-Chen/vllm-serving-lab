@@ -18,11 +18,15 @@ $outputDir = Join-Path $projectRoot "results\kv-tiers\$RunId"; New-Item -ItemTyp
 $model = "Qwen/Qwen2.5-1.5B-Instruct"; $image = "vllm/vllm-openai:v0.10.2"; $container = "vllm-serving-lab-kv-tier"
 $previousPythonPath = $env:PYTHONPATH; $env:PYTHONPATH = Join-Path $projectRoot "src"
 try {
-    foreach ($tier in @(@{ Name = "gpu-only"; L2 = $false }, @{ Name = "gpu-cpu-l2"; L2 = $true })) {
+    foreach ($tier in @(
+        @{ Name = "gpu-only"; L2 = $false; Policy = "lru" },
+        @{ Name = "gpu-cpu-l2"; L2 = $true; Policy = "lru" },
+        @{ Name = "gpu-cpu-l2-two-hit"; L2 = $true; Policy = "two_hit" }
+    )) {
         $tierDir = Join-Path $outputDir $tier.Name; New-Item -ItemType Directory -Force -Path $tierDir | Out-Null
         $l2Path = Join-Path $tierDir "cpu-l2"
         $start = @{ Model=$model; Image=$image; MaxNumSeqs=8; MaxModelLen=2048; GpuMemoryUtilization=0.85; KvCacheMemoryBytes=([long]$GpuCapacityMiB*1024*1024); EnablePrefixCaching=$true; Port=$Port; ContainerName=$container; Offline=$Offline }
-        if ($tier.L2) { $start.EnableCpuKvCache=$true; $start.CpuKvCacheBytes=([long]$CpuCapacityMiB*1024*1024); $start.CpuKvAdmissionPolicy="lru"; $start.CpuKvCachePath=$l2Path }
+        if ($tier.L2) { $start.EnableCpuKvCache=$true; $start.CpuKvCacheBytes=([long]$CpuCapacityMiB*1024*1024); $start.CpuKvAdmissionPolicy=$tier.Policy; $start.CpuKvCachePath=$l2Path }
         & (Join-Path $PSScriptRoot "Start-VllmServer.ps1") @start | Out-Null
         try {
             & $Python -m vllm_serving_lab.benchmark --base-url "http://127.0.0.1:$Port" --model $model `
