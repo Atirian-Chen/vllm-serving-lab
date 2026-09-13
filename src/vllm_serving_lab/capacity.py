@@ -15,13 +15,16 @@ from pathlib import Path
 from .benchmark import _system_metadata
 from .client import ClientSettings, StreamingCompletionClient
 from .metrics import RequestResult, percentile, summarize_results
-from .workloads import build_mixed_workload
+from .workloads import build_workload
 
 
 async def measure(args, rate: float, repeat: int) -> dict:
     count = max(args.requests, math.ceil(rate * args.min_duration))
     seed = args.seed + repeat - 1
-    items = build_mixed_workload(count, args.output_tokens, seed)
+    items = build_workload(args.workload, count, args.output_tokens, seed,
+                           sessions=args.sessions, rounds=args.rounds,
+                           idle_gap_ms=args.idle_gap_ms,
+                           background_unique_prefixes=args.background_unique_prefixes)
     records = [None] * count
     results = [None] * count
     samples = []
@@ -29,7 +32,10 @@ async def measure(args, rate: float, repeat: int) -> dict:
     settings = ClientSettings(args.base_url.rstrip("/"), args.model, args.timeout)
 
     async with StreamingCompletionClient(settings, max_connections=args.max_inflight + 8) as client:
-        warmup = build_mixed_workload(args.warmup, args.output_tokens, seed + 10_000)
+        metrics_before = await client.metrics_snapshot()
+        warmup = build_workload(args.workload, args.warmup, args.output_tokens, seed + 10_000,
+                                sessions=args.sessions, rounds=args.rounds,
+                                idle_gap_ms=0, background_unique_prefixes=0)
         warmed = await asyncio.gather(*(client.generate(item, seed) for item in warmup))
         if not all(item.ok for item in warmed):
             raise RuntimeError("Warm-up failed: " + str([item.error for item in warmed if not item.ok]))
@@ -90,8 +96,9 @@ async def measure(args, rate: float, repeat: int) -> dict:
             stop.set()
             await monitor
         elapsed = time.perf_counter() - started
+        metrics_after = await client.metrics_snapshot()
 
-    summary = summarize_results(results, elapsed)
+        summary = summarize_results(results, elapsed)
     dispatched = [record for record in records if record["dispatched_s"] is not None]
     dispatch_times = [record["dispatched_s"] for record in dispatched]
     actual_rate = ((len(dispatched) - 1) / (max(dispatch_times) - min(dispatch_times))
@@ -126,8 +133,9 @@ async def measure(args, rate: float, repeat: int) -> dict:
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "config": {**vars(args), "output_dir": str(args.output_dir), "rate": rate,
                    "repeat": repeat, "request_count": count, "seed": seed,
-                   "arrival": "uniform", "workload": "mixed-128-512-1024-words"},
+                   "arrival": "uniform", "workload": args.workload},
         "summary": summary, "requests": records, "client_inflight": samples,
+        "server_metrics_before": metrics_before, "server_metrics_after": metrics_after,
     }
 
 
@@ -143,7 +151,7 @@ def write_summary(output: Path, runs: list[dict], args) -> None:
         f"Generated: {datetime.now(timezone.utc).isoformat()}", "",
         f"- Model: `{args.model}`; server: `{args.base_url}`.",
         "- One fixed server configuration; keep `server.json` with the measured results.",
-        "- Uniform open-loop arrivals; equal proportions of 128/512/1024-word prompts, shuffled per repeat.",
+        f"- Uniform open-loop arrivals; workload: {args.workload}.",
         f"- Requested output: {args.output_tokens} tokens, temperature 0, ignore EOS. Actual token counts are in raw records.",
         f"- Joint SLO: success AND TTFT <= {args.ttft_slo_ms:g} ms AND TPOT <= {args.tpot_slo_ms:g} ms/token.",
         f"- A run passes when >= {args.target_attainment:.1%} of ALL planned requests meet the joint SLO and offered load is valid.",
@@ -231,6 +239,11 @@ def main():
     parser.add_argument("--min-duration", type=float, default=120)
     parser.add_argument("--warmup", type=int, default=8)
     parser.add_argument("--output-tokens", type=int, default=64)
+    parser.add_argument("--workload", choices=("mixed", "coding-agent", "session-chat"), default="mixed")
+    parser.add_argument("--sessions", type=int, default=8)
+    parser.add_argument("--rounds", type=int, default=4)
+    parser.add_argument("--idle-gap-ms", type=int, default=0)
+    parser.add_argument("--background-unique-prefixes", type=int, default=0)
     parser.add_argument("--ttft-slo-ms", type=float, default=1000)
     parser.add_argument("--tpot-slo-ms", type=float, default=50)
     parser.add_argument("--target-attainment", type=float, default=0.95)

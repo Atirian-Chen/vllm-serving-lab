@@ -22,6 +22,7 @@ dev = [
 [project.scripts]
 vllm-lab-benchmark = "vllm_serving_lab.benchmark:main"
 vllm-lab-summarize = "vllm_serving_lab.summarize:main"
+vllm-lab-capacity = "vllm_serving_lab.capacity:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

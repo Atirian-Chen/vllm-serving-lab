@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 
@@ -22,6 +23,8 @@ class WorkloadItem:
     expected_shared_tokens: int = 0
     reuse_distance: int | None = None
     idle_gap_ms: int = 0
+    role: str = "foreground"
+    background_unique_prefixes: int = 0
 
 
 def _word_block(word_count: int, offset: int = 0) -> str:
@@ -121,7 +124,87 @@ def build_coding_agent_workload(
     return items
 
 
-def build_workload(kind: str, count: int, output_tokens: int, seed: int) -> list[WorkloadItem]:
+def build_session_chat_workload(
+    count: int,
+    output_tokens: int,
+    seed: int,
+    sessions: int = 8,
+    rounds: int = 4,
+    idle_gap_ms: int = 0,
+    background_unique_prefixes: int = 0,
+) -> list[WorkloadItem]:
+    """Build a multi-turn support-chat trace with controllable cache pressure.
+
+    Each session keeps a stable system prompt and growing conversation history.
+    Optional unique background prompts approximate unrelated tenant traffic that
+    can evict otherwise idle prefixes from a finite GPU pool.
+    """
+    if sessions <= 0 or rounds <= 0:
+        raise ValueError("sessions and rounds must be positive")
+    if idle_gap_ms < 0 or background_unique_prefixes < 0:
+        raise ValueError("idle_gap_ms and background_unique_prefixes must be nonnegative")
+    rng = random.Random(seed)
+    total_foreground = min(sessions * rounds, max(1, math.ceil(count / (background_unique_prefixes + 1))))
+    items: list[WorkloadItem] = []
+    history_words: dict[int, int] = {session: 0 for session in range(sessions)}
+    last_seen: dict[int, int] = {}
+    index = 0
+    for round_index in range(rounds):
+        for session in range(sessions):
+            if index >= total_foreground:
+                break
+            for background in range(background_unique_prefixes):
+                bg_id = f"chat-bg-{round_index:02d}-{session:02d}-{background:03d}"
+                bg_prompt = (
+                    f"Unrelated tenant {bg_id} system policy. "
+                    + _word_block(256 + background % 32, rng.randrange(len(COMMON_WORDS)))
+                    + "\nQuestion: summarize this unrelated request."
+                )
+                items.append(WorkloadItem(
+                    request_id=bg_id, prompt=bg_prompt,
+                    target_prompt_words=300 + background % 32, output_tokens=output_tokens,
+                    session_id=bg_id, prefix_id=bg_id, expected_shared_tokens=0,
+                    role="background", background_unique_prefixes=background_unique_prefixes,
+                ))
+            shared = 256 + history_words[session]
+            prefix = (
+                f"Support session {session:03d}. Follow the support policy and tools. "
+                + _word_block(shared, session + round_index)
+            )
+            suffix = "\nUser turn: diagnose the issue and propose the next action. " + _word_block(
+                40 + round_index * 4, rng.randrange(len(COMMON_WORDS))
+            )
+            reuse_distance = None if session not in last_seen else index - last_seen[session]
+            last_seen[session] = index
+            items.append(WorkloadItem(
+                request_id=f"chat-{session:02d}-round-{round_index:02d}",
+                prompt=prefix + suffix, target_prompt_words=shared + 50 + round_index * 4,
+                output_tokens=output_tokens, session_id=f"session-{session:02d}",
+                prefix_id=f"session-prefix-{session:02d}", expected_shared_tokens=shared,
+                reuse_distance=reuse_distance, idle_gap_ms=idle_gap_ms,
+                role="foreground", background_unique_prefixes=background_unique_prefixes,
+            ))
+            history_words[session] += 64
+            index += 1
+        if index >= total_foreground:
+            break
+    # Keep the public contract that ``count`` means total requests. If the
+    # requested count exceeds the planned foreground trace, fill with unique
+    # background requests rather than silently returning fewer records.
+    while len(items) < count:
+        background = len(items)
+        bg_id = f"chat-bg-tail-{background:04d}"
+        items.append(WorkloadItem(
+            request_id=bg_id,
+            prompt=f"Unrelated tenant {bg_id} system policy. " + _word_block(256, rng.randrange(len(COMMON_WORDS))),
+            target_prompt_words=256, output_tokens=output_tokens,
+            session_id=bg_id, prefix_id=bg_id, role="background",
+            background_unique_prefixes=background_unique_prefixes,
+        ))
+    return items[:count]
+
+
+def build_workload(kind: str, count: int, output_tokens: int, seed: int, **options: object) -> list[WorkloadItem]:
     if count <= 0:
         raise ValueError("count must be positive")
     if output_tokens <= 0:
@@ -132,4 +215,12 @@ def build_workload(kind: str, count: int, output_tokens: int, seed: int) -> list
         return build_shared_prefix_workload(count, output_tokens, seed)
     if kind == "coding-agent":
         return build_coding_agent_workload(count, output_tokens, seed)
+    if kind == "session-chat":
+        return build_session_chat_workload(
+            count, output_tokens, seed,
+            sessions=int(options.get("sessions", 8)),
+            rounds=int(options.get("rounds", 4)),
+            idle_gap_ms=int(options.get("idle_gap_ms", 0)),
+            background_unique_prefixes=int(options.get("background_unique_prefixes", 0)),
+        )
     raise ValueError(f"unsupported workload: {kind}")

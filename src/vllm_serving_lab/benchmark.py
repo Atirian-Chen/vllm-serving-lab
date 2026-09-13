@@ -92,6 +92,8 @@ async def _run_closed_loop(
                 index, item = queue.get_nowait()
             except asyncio.QueueEmpty:
                 return
+            if item.idle_gap_ms > 0:
+                await asyncio.sleep(item.idle_gap_ms / 1000)
             ordered_results[index] = await client.generate(item, seed + index)
             queue.task_done()
 
@@ -102,8 +104,14 @@ async def _run_closed_loop(
 
 
 async def run(args: argparse.Namespace) -> dict[str, object]:
-    measured_items = build_workload(args.workload, args.requests, args.output_tokens, args.seed)
-    warmup_items = build_workload(args.workload, args.warmup, min(args.output_tokens, 16), args.seed + 10_000)
+    workload_options = {
+        "sessions": getattr(args, "sessions", 8),
+        "rounds": getattr(args, "rounds", 4),
+        "idle_gap_ms": getattr(args, "idle_gap_ms", 0),
+        "background_unique_prefixes": getattr(args, "background_unique_prefixes", 0),
+    }
+    measured_items = build_workload(args.workload, args.requests, args.output_tokens, args.seed, **workload_options)
+    warmup_items = build_workload(args.workload, args.warmup, min(args.output_tokens, 16), args.seed + 10_000, **workload_options)
     settings = ClientSettings(
         base_url=args.base_url,
         model=args.model,
@@ -113,6 +121,7 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
     )
 
     async with StreamingCompletionClient(settings, max_connections=max(16, args.concurrency * 2)) as client:
+        metrics_before = await client.metrics_snapshot()
         warmup_results, _ = await _run_closed_loop(
             client,
             warmup_items,
@@ -133,6 +142,7 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
         )
         stop_gpu_monitor.set()
         gpu_samples = await gpu_task
+        metrics_after = await client.metrics_snapshot()
 
     summary = summarize_results(results, wall_time_s, gpu_samples)
     artifact: dict[str, object] = {
@@ -153,10 +163,16 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
             "ignore_eos": args.ignore_eos,
             "server_image": args.server_image,
             "run_number": args.run_number,
+            "sessions": workload_options["sessions"],
+            "rounds": workload_options["rounds"],
+            "idle_gap_ms": workload_options["idle_gap_ms"],
+            "background_unique_prefixes": workload_options["background_unique_prefixes"],
         },
         "system": _system_metadata(),
         "summary": summary,
         "gpu_samples": [asdict(sample) for sample in gpu_samples],
+        "server_metrics_before": metrics_before,
+        "server_metrics_after": metrics_after,
         "requests": [result.to_dict() for result in results],
     }
 
@@ -170,7 +186,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Benchmark a vLLM OpenAI-compatible streaming endpoint.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--model", required=True)
-    parser.add_argument("--workload", choices=("mixed", "shared-prefix", "coding-agent"), required=True)
+    parser.add_argument("--workload", choices=("mixed", "shared-prefix", "coding-agent", "session-chat"), required=True)
     parser.add_argument("--config-name", required=True)
     parser.add_argument("--concurrency", type=int, required=True)
     parser.add_argument("--requests", type=int, default=120)
@@ -183,6 +199,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--server-max-num-seqs", type=int, required=True)
     parser.add_argument("--server-image", required=True)
     parser.add_argument("--run-number", type=int, required=True)
+    parser.add_argument("--sessions", type=int, default=8)
+    parser.add_argument("--rounds", type=int, default=4)
+    parser.add_argument("--idle-gap-ms", type=int, default=0)
+    parser.add_argument("--background-unique-prefixes", type=int, default=0)
     parser.add_argument(
         "--prefix-caching",
         action=argparse.BooleanOptionalAction,
@@ -204,6 +224,8 @@ def main() -> None:
         parser.error("--concurrency must be positive")
     if args.warmup <= 0:
         parser.error("--warmup must be positive")
+    if args.sessions <= 0 or args.rounds <= 0 or args.idle_gap_ms < 0 or args.background_unique_prefixes < 0:
+        parser.error("invalid session workload options")
     artifact = asyncio.run(run(args))
     print(json.dumps(artifact["summary"], indent=2))
 

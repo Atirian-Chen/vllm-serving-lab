@@ -23,6 +23,8 @@ class RequestResult:
     expected_shared_tokens: int = 0
     reuse_distance: int | None = None
     idle_gap_ms: int = 0
+    role: str = "foreground"
+    background_unique_prefixes: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)

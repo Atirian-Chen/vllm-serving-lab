@@ -128,6 +128,40 @@ TTFT 从实际发送计时，到收到首个非空内容为止。TPOT 沿用现�
 ## 简历使用边界
 
 完成真实实验后，可以描述为“基于 vLLM 搭建单卡推理服务”“构建异步流式压测工具”“评测 Continuous Batching 与 Prefix Cache”。不能描述为“实现 PagedAttention”“实现 Continuous Batching”或“证明端到端生产性能提升”。所有数字必须附带本机硬件、模型、并发、输入输出长度和对照配置。
+
+## 三阶段 Prefix Cache 实验
+
+### 第一阶段：真实场景
+
+`session-chat` 负载模拟客服或 Agent 的多轮会话。每个 session 有稳定的 system/tool 前缀，历史按轮次增长；`--idle-gap-ms` 控制会话空闲时间，`--background-unique-prefixes` 插入不同租户的冷前缀，制造 reuse distance 和 LRU 压力。请求记录包含 `session_id`、`prefix_id`、`expected_shared_tokens`、`reuse_distance`、`role`。
+
+```powershell
+.\scripts\Run-PrefixScenarios.ps1 -IdleGapsMs 0,30000 -BackgroundUniquePrefixes 0,4 -Requests 32 -Repeats 1 -Offline
+```
+
+脚本对每个场景分别重启 Prefix Cache 开启和关闭的服务，结果位于 `results/prefix-scenarios/<run-id>/`。`expected_shared_tokens` 是 workload 的理论共享长度，不等于服务端实际命中 token；命中率应结合 vLLM Prometheus 指标或日志核对。
+
+### 第二阶段：可变 GPU KV 容量
+
+`--kv-cache-memory-bytes` 直接限制 vLLM 启动时的 GPU KV block pool。实验只改变容量，模型、并发、前缀流量和输出长度保持不变；每个容量都会重新启动独立进程。
+
+```powershell
+.\scripts\Run-KvCapacity.ps1 -CapacitiesMiB 128,256,512 -Requests 60 -Repeats 1 -Offline
+```
+
+重点观察容量降低后，不同 reuse distance 的 TTFT P95、成功率、goodput 和排队增长。这个参数是启动时的固定容量，不是运行时自动扩缩容。
+
+### 第三阶段：GPU + CPU/Host L2
+
+vLLM 0.10.2 V1 引擎提供 KV connector。仓库新增 `CpuL2Connector`，复用官方 `SharedStorageConnector` 的 tensor 读写路径，只增加 host tier 的容量上限和淘汰策略：`max_cpu_bytes` 超限按 LRU 删除完整 prefix 目录，`two_hit` 策略则要求同一前缀第二次出现后才进入 L2。
+
+```powershell
+.\scripts\Run-KvTiers.ps1 -GpuCapacityMiB 256 -CpuCapacityMiB 512 -Requests 60 -Offline
+```
+
+脚本比较 `gpu-only` 和 `gpu-cpu-l2`。L1 是 vLLM GPU Prefix Cache；L2 是挂载到容器的 host 目录，KV 以 safetensors 保存，命中后加载回 GPU。这个版本不做 RDMA、跨机共享、压缩或复杂一致性协议，目标是测清楚 GPU 命中、Host 回载和完全重算三种路径的端到端代价。Host L2 是实验 connector，不应描述成生产级 LMCache 或分布式缓存。
+
+面试时可以按同一条主线复述：先用真实 reuse distance 建模流量，再固定 workload 扫 GPU 容量，最后增加一个有容量和淘汰策略的 host tier；每一步都用 TTFT P95、TPOT、goodput、SLO 和 profile 判断收益来自缓存命中、缓存搬运还是排队。
 # Prefix Cache 深度实验路线
 
 本分支按三阶段构建可复现实验：

@@ -43,6 +43,15 @@ class StreamingCompletionClient:
     async def __aexit__(self, exc_type, exc, traceback) -> None:
         await self._client.aclose()
 
+    async def metrics_snapshot(self) -> str | None:
+        """Return the raw Prometheus endpoint when the server exposes it."""
+        try:
+            response = await self._client.get("/metrics")
+            response.raise_for_status()
+            return response.text
+        except Exception:
+            return None
+
     async def generate(self, item: WorkloadItem, seed: int) -> RequestResult:
         payload = {
             "model": self._settings.model,
@@ -110,6 +119,7 @@ class StreamingCompletionClient:
                 session_id=item.session_id, prefix_id=item.prefix_id,
                 expected_shared_tokens=item.expected_shared_tokens,
                 reuse_distance=item.reuse_distance, idle_gap_ms=item.idle_gap_ms,
+                role=item.role, background_unique_prefixes=item.background_unique_prefixes,
             )
         except Exception as error:  # Request-level failures belong in the result artifact.
             return RequestResult(
@@ -126,4 +136,5 @@ class StreamingCompletionClient:
                 session_id=item.session_id, prefix_id=item.prefix_id,
                 expected_shared_tokens=item.expected_shared_tokens,
                 reuse_distance=item.reuse_distance, idle_gap_ms=item.idle_gap_ms,
+                role=item.role, background_unique_prefixes=item.background_unique_prefixes,
             )

@@ -23,3 +23,14 @@ def test_coding_agent_workload_has_tenant_prefixes_and_reuse_distance() -> None:
     assert len({item.prefix_id for item in items}) > 1
     assert all(item.expected_shared_tokens == 512 for item in items)
     assert any(item.reuse_distance is not None for item in items)
+
+
+def test_session_chat_can_add_background_pressure_without_changing_count() -> None:
+    items = build_workload(
+        "session-chat", 24, 16, 2026, sessions=4, rounds=4,
+        idle_gap_ms=30_000, background_unique_prefixes=2,
+    )
+    assert len(items) == 24
+    assert any(item.role == "foreground" and item.idle_gap_ms == 30_000 for item in items)
+    assert any(item.role == "background" for item in items)
+    assert len({item.prefix_id for item in items if item.role == "foreground"}) == 4

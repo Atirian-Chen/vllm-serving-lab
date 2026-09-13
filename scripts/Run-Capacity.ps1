@@ -9,6 +9,12 @@ param(
     [int]$OutputTokens = 64,
     [int]$Port = 8000,
     [double]$GpuMemoryUtilization = 0.50,
+    [string]$Workload = "mixed",
+    [int]$Sessions = 8,
+    [int]$Rounds = 4,
+    [int]$IdleGapMs = 0,
+    [int]$BackgroundUniquePrefixes = 0,
+    [long]$KvCacheMemoryBytes = 0,
     [string]$RunId = (Get-Date -Format "yyyyMMdd-HHmmss"),
     [string]$Python,
     [switch]$Offline,
@@ -44,7 +50,7 @@ try {
     if (-not $UseExistingServer) {
         & (Join-Path $PSScriptRoot "Start-VllmServer.ps1") -Model $model -Image $image `
             -MaxNumSeqs 8 -MaxModelLen 2048 -GpuMemoryUtilization $GpuMemoryUtilization `
-            -Port $Port -ContainerName $container -Offline:$Offline | Out-Null
+            -KvCacheMemoryBytes $KvCacheMemoryBytes -Port $Port -ContainerName $container -Offline:$Offline | Out-Null
     }
     $inspection = docker inspect $container | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw "Cannot inspect the capacity server." }
@@ -61,7 +67,10 @@ try {
     $arguments = @("-m", "vllm_serving_lab.capacity", "--base-url", "http://127.0.0.1:$Port", "--model", $model,
         "--repeats", "$Repeats", "--requests", "$Requests", "--min-duration", $MinDuration.ToString($invariant),
         "--ttft-slo-ms", $TtftSloMs.ToString($invariant), "--tpot-slo-ms", $TpotSloMs.ToString($invariant),
-        "--output-tokens", "$OutputTokens", "--output-dir", $outputDir, "--rates")
+        "--output-tokens", "$OutputTokens", "--output-dir", $outputDir,
+        "--workload", $Workload, "--sessions", "$Sessions", "--rounds", "$Rounds",
+        "--idle-gap-ms", "$IdleGapMs", "--background-unique-prefixes", "$BackgroundUniquePrefixes")
+    $arguments += "--rates"
     $arguments += @($Rates | ForEach-Object { $_.ToString($invariant) })
     & $Python @arguments
     if ($LASTEXITCODE -ne 0) { throw "Capacity sweep failed; completed runs remain in $outputDir." }

@@ -1,0 +1,18 @@
+{
+  "gpu_only": {
+    "enable_cpu_l2": false,
+    "gpu_kv_bytes": 268435456
+  },
+  "gpu_cpu_l2": {
+    "enable_cpu_l2": true,
+    "gpu_kv_bytes": 268435456,
+    "cpu_l2_bytes": 536870912,
+    "admission_policy": "lru"
+  },
+  "gpu_cpu_l2_two_hit": {
+    "enable_cpu_l2": true,
+    "gpu_kv_bytes": 268435456,
+    "cpu_l2_bytes": 536870912,
+    "admission_policy": "two_hit"
+  }
+}
