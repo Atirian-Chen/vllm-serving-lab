@@ -4,6 +4,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .pytest-tmp/
+.pytest-tmp*/
+.tmp_vllm_src*/
 .coverage
 htmlcov/
 dist/
@@ -15,3 +17,9 @@ results/raw/*
 !results/raw/.gitkeep
 !results/raw/20260818-rtx4070-fp16/
 !results/raw/20260818-rtx4070-fp16/*.json
+
+# Capacity/prefix sweeps can contain thousands of machine-specific requests.
+results/capacity/*
+results/prefix-scenarios/*
+results/kv-capacity/*
+results/kv-tiers/*
