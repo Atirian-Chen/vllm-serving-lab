@@ -32,13 +32,15 @@ async def measure(args, rate: float, repeat: int) -> dict:
     settings = ClientSettings(args.base_url.rstrip("/"), args.model, args.timeout)
 
     async with StreamingCompletionClient(settings, max_connections=args.max_inflight + 8) as client:
-        metrics_before = await client.metrics_snapshot()
-        warmup = build_workload(args.workload, args.warmup, args.output_tokens, seed + 10_000,
+        warmup = (build_workload(args.workload, args.warmup, args.output_tokens, seed + 10_000,
                                 sessions=args.sessions, rounds=args.rounds,
-                                idle_gap_ms=0, background_unique_prefixes=0)
+                                idle_gap_ms=0, background_unique_prefixes=0) if args.warmup else [])
         warmed = await asyncio.gather(*(client.generate(item, seed) for item in warmup))
         if not all(item.ok for item in warmed):
             raise RuntimeError("Warm-up failed: " + str([item.error for item in warmed if not item.ok]))
+
+        await asyncio.sleep(getattr(args, "metrics_settle_s", 1.2))
+        metrics_before = await client.metrics_snapshot()
 
         started = time.perf_counter()
         stop = asyncio.Event()
@@ -96,6 +98,7 @@ async def measure(args, rate: float, repeat: int) -> dict:
             stop.set()
             await monitor
         elapsed = time.perf_counter() - started
+        await asyncio.sleep(getattr(args, "metrics_settle_s", 1.2))
         metrics_after = await client.metrics_snapshot()
 
         summary = summarize_results(results, elapsed)

@@ -20,6 +20,10 @@ param(
     [ValidateSet("lru", "two_hit")]
     [string]$CpuKvAdmissionPolicy = "lru",
     [string]$CpuKvCachePath,
+    [switch]$CpuKvCacheTmpfs,
+    [string]$ProfilePath,
+    [switch]$DisableChunkedPrefill,
+    [switch]$EnableDevEndpoints,
     [string]$Dtype = "half",
     [string]$ContainerName = "vllm-serving-lab-server",
     [string]$HuggingFaceCache,
@@ -70,11 +74,28 @@ $dockerArgs = @(
     "--gpus", "all",
     "--ipc=host",
     "--name", $ContainerName,
-    "--publish", "${Port}:8000",
+    "--publish", "127.0.0.1:${Port}:8000",
     "--volume", "${HuggingFaceCache}:/root/.cache/huggingface",
     "--volume", "${VllmCache}:/root/.cache/vllm",
     "--volume", "${projectRoot}/src:/opt/vllm-lab/src:ro"
 )
+$dockerArgs += @("--env", "VLLM_LOG_STATS_INTERVAL=1")
+if ($EnableDevEndpoints) {
+    $dockerArgs += @("--env", "VLLM_SERVER_DEV_MODE=1")
+}
+if ($EnableCpuKvCache) {
+    $dockerArgs += @("--env", "PYTHONPATH=/opt/vllm-lab/src")
+    if ($CpuKvCacheTmpfs) {
+        $tmpfsBytes = [long]$CpuKvCacheBytes + 268435456
+        $dockerArgs += @("--tmpfs", "/var/lib/vllm-kv:rw,size=$tmpfsBytes")
+    } else {
+        $dockerArgs += @("--volume", "${CpuKvCachePath}:/var/lib/vllm-kv")
+    }
+}
+if ($ProfilePath) {
+    New-Item -ItemType Directory -Force -Path $ProfilePath | Out-Null
+    $dockerArgs += @("--volume", "${ProfilePath}:/profiles", "--env", "VLLM_TORCH_PROFILER_DIR=/profiles")
+}
 if ($Offline) {
     $dockerArgs += @("--env", "HF_HUB_OFFLINE=1")
 }
@@ -90,12 +111,24 @@ $dockerArgs += @(
 if ($KvCacheMemoryBytes -gt 0) {
     $dockerArgs += @("--kv-cache-memory-bytes", "$KvCacheMemoryBytes")
 }
+if ($DisableChunkedPrefill) {
+    $dockerArgs += @("--no-enable-chunked-prefill", "--max-num-batched-tokens", "8192")
+}
 if ($EnableCpuKvCache) {
+    $transferConfig = @{
+        kv_connector = "CpuL2Connector"
+        kv_role = "kv_both"
+        kv_connector_module_path = "vllm_serving_lab.cpu_l2_connector"
+        kv_connector_extra_config = @{
+            shared_storage_path = "/var/lib/vllm-kv"
+            max_cpu_bytes = $CpuKvCacheBytes
+            admission_policy = $CpuKvAdmissionPolicy
+            prefix_tokens = 512
+        }
+    } | ConvertTo-Json -Depth 5 -Compress
     $dockerArgs += @(
-        "--volume", "${CpuKvCachePath}:/var/lib/vllm-kv",
-        "--env", "PYTHONPATH=/opt/vllm-lab/src",
         "--kv-transfer-config",
-        ('{"kv_connector":"CpuL2Connector","kv_role":"kv_both","kv_connector_module_path":"vllm_serving_lab.cpu_l2_connector","kv_connector_extra_config":{"shared_storage_path":"/var/lib/vllm-kv","max_cpu_bytes":' + $CpuKvCacheBytes + ',"admission_policy":"' + $CpuKvAdmissionPolicy + '"}}')
+        $transferConfig
     )
 }
 

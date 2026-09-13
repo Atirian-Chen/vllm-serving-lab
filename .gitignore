@@ -24,3 +24,8 @@ results/capacity/*
 results/prefix-scenarios/*
 results/kv-capacity/*
 results/kv-tiers/*
+results/prefix-reports/*
+!results/prefix-reports/20260913/
+results/prefix-reports/20260913/*partial*
+results/prefix-study/*
+!results/prefix-study/published-20260913/

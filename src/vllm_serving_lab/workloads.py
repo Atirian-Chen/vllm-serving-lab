@@ -146,7 +146,7 @@ def build_session_chat_workload(
     rng = random.Random(seed)
     total_foreground = min(sessions * rounds, max(1, math.ceil(count / (background_unique_prefixes + 1))))
     items: list[WorkloadItem] = []
-    history_words: dict[int, int] = {session: 0 for session in range(sessions)}
+    histories: dict[int, str] = {session: "" for session in range(sessions)}
     last_seen: dict[int, int] = {}
     index = 0
     for round_index in range(rounds):
@@ -154,40 +154,41 @@ def build_session_chat_workload(
             if index >= total_foreground:
                 break
             for background in range(background_unique_prefixes):
-                bg_id = f"chat-bg-{round_index:02d}-{session:02d}-{background:03d}"
+                bg_id = f"chat-bg-{seed}-{round_index:02d}-{session:02d}-{background:03d}"
                 bg_prompt = (
                     f"Unrelated tenant {bg_id} system policy. "
-                    + _word_block(256 + background % 32, rng.randrange(len(COMMON_WORDS)))
+                    + _word_block(512 + background % 32, rng.randrange(len(COMMON_WORDS)))
                     + "\nQuestion: summarize this unrelated request."
                 )
                 items.append(WorkloadItem(
                     request_id=bg_id, prompt=bg_prompt,
-                    target_prompt_words=300 + background % 32, output_tokens=output_tokens,
+                    target_prompt_words=len(bg_prompt.split()), output_tokens=output_tokens,
                     session_id=bg_id, prefix_id=bg_id, expected_shared_tokens=0,
                     role="background", background_unique_prefixes=background_unique_prefixes,
                 ))
-            shared = 256 + history_words[session]
             prefix = (
-                f"Support session {session:03d}. Follow the support policy and tools. "
-                + _word_block(shared, session + round_index)
+                f"Support session {seed}-{session:03d}. Follow the support policy and tools. "
+                + _word_block(512, session)
+                + histories[session]
             )
-            suffix = "\nUser turn: diagnose the issue and propose the next action. " + _word_block(
-                40 + round_index * 4, rng.randrange(len(COMMON_WORDS))
+            suffix = f"\nUser turn {round_index}: diagnose the issue and propose the next action. " + _word_block(
+                32, rng.randrange(len(COMMON_WORDS))
             )
-            reuse_distance = None if session not in last_seen else index - last_seen[session]
-            last_seen[session] = index
+            reuse_distance = None if session not in last_seen else len(items) - last_seen[session]
+            last_seen[session] = len(items)
             items.append(WorkloadItem(
                 request_id=f"chat-{session:02d}-round-{round_index:02d}",
-                prompt=prefix + suffix, target_prompt_words=shared + 50 + round_index * 4,
+                prompt=prefix + suffix, target_prompt_words=len((prefix + suffix).split()),
                 output_tokens=output_tokens, session_id=f"session-{session:02d}",
-                prefix_id=f"session-prefix-{session:02d}", expected_shared_tokens=shared,
+                prefix_id=f"session-prefix-{session:02d}", expected_shared_tokens=len(prefix.split()),
                 # The first turn is a cold start; apply the idle gap only when
                 # returning to a session whose prefix has been seen before.
                 reuse_distance=reuse_distance,
                 idle_gap_ms=idle_gap_ms if reuse_distance is not None else 0,
                 role="foreground", background_unique_prefixes=background_unique_prefixes,
             ))
-            history_words[session] += 64
+            # Replay fixed prior turns so token-identical history survives reuse.
+            histories[session] += suffix + "\nAssistant: " + _word_block(16, session)
             index += 1
         if index >= total_foreground:
             break

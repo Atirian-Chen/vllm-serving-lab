@@ -85,6 +85,8 @@ async def _run_closed_loop(
         queue.put_nowait((index, item))
 
     ordered_results: list[RequestResult | None] = [None] * len(items)
+    session_locks: dict[str, asyncio.Lock] = {}
+    session_finished: dict[str, float] = {}
 
     async def worker() -> None:
         while True:
@@ -92,9 +94,16 @@ async def _run_closed_loop(
                 index, item = queue.get_nowait()
             except asyncio.QueueEmpty:
                 return
-            if item.idle_gap_ms > 0:
-                await asyncio.sleep(item.idle_gap_ms / 1000)
-            ordered_results[index] = await client.generate(item, seed + index)
+            if item.session_id and item.role == "foreground":
+                lock = session_locks.setdefault(item.session_id, asyncio.Lock())
+                async with lock:
+                    if item.session_id in session_finished:
+                        remaining = session_finished[item.session_id] + item.idle_gap_ms / 1000 - time.perf_counter()
+                        await asyncio.sleep(max(0, remaining))
+                    ordered_results[index] = await client.generate(item, seed + index)
+                    session_finished[item.session_id] = time.perf_counter()
+            else:
+                ordered_results[index] = await client.generate(item, seed + index)
             queue.task_done()
 
     started = time.perf_counter()
@@ -111,7 +120,8 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
         "background_unique_prefixes": getattr(args, "background_unique_prefixes", 0),
     }
     measured_items = build_workload(args.workload, args.requests, args.output_tokens, args.seed, **workload_options)
-    warmup_items = build_workload(args.workload, args.warmup, min(args.output_tokens, 16), args.seed + 10_000, **workload_options)
+    warmup_items = (build_workload(args.workload, args.warmup, min(args.output_tokens, 16), args.seed + 10_000, **workload_options)
+                    if args.warmup else [])
     settings = ClientSettings(
         base_url=args.base_url,
         model=args.model,
@@ -121,7 +131,6 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
     )
 
     async with StreamingCompletionClient(settings, max_connections=max(16, args.concurrency * 2)) as client:
-        metrics_before = await client.metrics_snapshot()
         warmup_results, _ = await _run_closed_loop(
             client,
             warmup_items,
@@ -131,6 +140,9 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
         warmup_failures = [result for result in warmup_results if not result.ok]
         if warmup_failures:
             raise RuntimeError(f"warm-up failed: {warmup_failures[0].error}")
+
+        await asyncio.sleep(getattr(args, "metrics_settle_s", 0))
+        metrics_before = await client.metrics_snapshot()
 
         stop_gpu_monitor = asyncio.Event()
         gpu_task = asyncio.create_task(_monitor_gpu(stop_gpu_monitor, args.gpu_sample_interval))
@@ -142,6 +154,7 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
         )
         stop_gpu_monitor.set()
         gpu_samples = await gpu_task
+        await asyncio.sleep(getattr(args, "metrics_settle_s", 0))
         metrics_after = await client.metrics_snapshot()
 
     summary = summarize_results(results, wall_time_s, gpu_samples)
@@ -195,6 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--timeout", type=float, default=600.0)
     parser.add_argument("--gpu-sample-interval", type=float, default=0.0)
+    parser.add_argument("--metrics-settle-s", type=float, default=1.2)
     parser.add_argument("--api-key")
     parser.add_argument("--server-max-num-seqs", type=int, required=True)
     parser.add_argument("--server-image", required=True)
@@ -222,8 +236,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.concurrency <= 0:
         parser.error("--concurrency must be positive")
-    if args.warmup <= 0:
-        parser.error("--warmup must be positive")
+    if args.warmup < 0:
+        parser.error("--warmup must be nonnegative")
     if args.sessions <= 0 or args.rounds <= 0 or args.idle_gap_ms < 0 or args.background_unique_prefixes < 0:
         parser.error("invalid session workload options")
     artifact = asyncio.run(run(args))

@@ -1,0 +1,443 @@
+[
+  {
+    "path": "results\\prefix-study\\published-20260913\\stage3\\gpu-cpu-l2\\profiles\\75a3bdfda357_1.async_llm.1789304626764085071.pt.trace.json.gz",
+    "categories": {
+      "python_function": [
+        27075,
+        74271.03675299746
+      ],
+      "Trace": [
+        1,
+        2055.91996
+      ]
+    },
+    "process": "API",
+    "copies": {},
+    "top_kernels": []
+  },
+  {
+    "path": "results\\prefix-study\\published-20260913\\stage3\\gpu-cpu-l2\\profiles\\75a3bdfda357_46.1789304627432516790.pt.trace.json.gz",
+    "categories": {
+      "cpu_op": [
+        68182,
+        2749.078459999971
+      ],
+      "python_function": [
+        151684,
+        113566.15796799671
+      ],
+      "overhead": [
+        6,
+        2.958552
+      ],
+      "gpu_memcpy": [
+        1821,
+        6.075295000000158
+      ],
+      "cuda_runtime": [
+        17196,
+        720.225547999991
+      ],
+      "kernel": [
+        18626,
+        991.9973630000783
+      ],
+      "cuda_driver": [
+        563,
+        9.88758700000001
+      ],
+      "gpu_memset": [
+        132,
+        0.12125299999999999
+      ],
+      "Trace": [
+        1,
+        2087.593641
+      ]
+    },
+    "process": "GPU worker",
+    "copies": {
+      "Memcpy HtoD (Pageable -> Device)": [
+        485,
+        2.5337309999999946,
+        29762468
+      ],
+      "Memcpy DtoH (Device -> Pageable)": [
+        76,
+        2.299442999999997,
+        14680448
+      ],
+      "Memcpy DtoD (Device -> Device)": [
+        1260,
+        1.2421210000000025,
+        3870720
+      ]
+    },
+    "top_kernels": [
+      [
+        "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __half, __half, __half, float, false, true, true, false, 6, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float>)",
+        [
+          2568,
+          434.27500000000066
+        ]
+      ],
+      [
+        "ampere_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_32x1_tn",
+        [
+          140,
+          271.04584400000016
+        ]
+      ],
+      [
+        "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __half, __half, __half, float, false, true, true, false, 7, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float>)",
+        [
+          1260,
+          159.91493000000014
+        ]
+      ],
+      [
+        "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_128x2_tn_align8>(cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_128x2_tn_align8::Params)",
+        [
+          1260,
+          37.99752000000003
+        ]
+      ],
+      [
+        "ampere_fp16_s1688gemm_fp16_128x128_ldg8_relu_f2f_stages_32x1_tn",
+        [
+          28,
+          22.162419
+        ]
+      ],
+      [
+        "void flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::half_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::half_t> >, true, false, false, false, true, false, false, false>(flash::Flash_fwd_params)",
+        [
+          84,
+          14.229603999999995
+        ]
+      ],
+      [
+        "void flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::half_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::half_t> >, false, false, false, false, true, false, true, false>(flash::Flash_fwd_params)",
+        [
+          1260,
+          10.935209000000027
+        ]
+      ],
+      [
+        "void cutlass::Kernel2<cutlass_80_tensorop_s16816gemm_f16_256x64_32x4_tn_align8>(cutlass_80_tensorop_s16816gemm_f16_256x64_32x4_tn_align8::Params)",
+        [
+          56,
+          7.019303
+        ]
+      ],
+      [
+        "triton_poi_fused_mul_silu_1",
+        [
+          1344,
+          5.8579550000001435
+        ]
+      ],
+      [
+        "void flash::flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::half_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::half_t> >, 4, 3, true>(flash::Flash_fwd_params)",
+        [
+          1260,
+          4.62053800000003
+        ]
+      ]
+    ]
+  },
+  {
+    "path": "results\\prefix-study\\published-20260913\\stage3\\gpu-cpu-l2-two-hit\\profiles\\7291fe3a9128_1.async_llm.1789304876690295951.pt.trace.json.gz",
+    "categories": {
+      "python_function": [
+        27182,
+        70286.0466339982
+      ],
+      "Trace": [
+        1,
+        1945.286275
+      ]
+    },
+    "process": "API",
+    "copies": {},
+    "top_kernels": []
+  },
+  {
+    "path": "results\\prefix-study\\published-20260913\\stage3\\gpu-cpu-l2-two-hit\\profiles\\7291fe3a9128_46.1789304877361180992.pt.trace.json.gz",
+    "categories": {
+      "cpu_op": [
+        67086,
+        1782.1726460000104
+      ],
+      "python_function": [
+        149445,
+        101404.41997299792
+      ],
+      "overhead": [
+        6,
+        2.648772
+      ],
+      "gpu_memcpy": [
+        1765,
+        3.7559500000000474
+      ],
+      "cuda_runtime": [
+        17139,
+        631.8343330000021
+      ],
+      "kernel": [
+        18570,
+        932.447411000074
+      ],
+      "cuda_driver": [
+        535,
+        5.935539999999998
+      ],
+      "gpu_memset": [
+        216,
+        0.15174699999999977
+      ],
+      "Trace": [
+        1,
+        1973.194348
+      ]
+    },
+    "process": "GPU worker",
+    "copies": {
+      "Memcpy HtoD (Pageable -> Device)": [
+        429,
+        1.329044000000007,
+        14977956
+      ],
+      "Memcpy DtoH (Device -> Pageable)": [
+        76,
+        1.1761870000000012,
+        14680448
+      ],
+      "Memcpy DtoD (Device -> Device)": [
+        1260,
+        1.2507190000000012,
+        3870720
+      ]
+    },
+    "top_kernels": [
+      [
+        "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __half, __half, __half, float, false, true, true, false, 6, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float>)",
+        [
+          2568,
+          415.4959759999988
+        ]
+      ],
+      [
+        "ampere_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_32x1_tn",
+        [
+          196,
+          251.94166099999984
+        ]
+      ],
+      [
+        "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __half, __half, __half, float, false, true, true, false, 7, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float>)",
+        [
+          1260,
+          148.359042
+        ]
+      ],
+      [
+        "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_128x2_tn_align8>(cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_128x2_tn_align8::Params)",
+        [
+          1260,
+          36.596760000000124
+        ]
+      ],
+      [
+        "ampere_fp16_s1688gemm_fp16_128x128_ldg8_relu_f2f_stages_32x1_tn",
+        [
+          56,
+          20.580453999999996
+        ]
+      ],
+      [
+        "void flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::half_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::half_t> >, true, false, false, false, true, false, false, false>(flash::Flash_fwd_params)",
+        [
+          84,
+          11.795099999999996
+        ]
+      ],
+      [
+        "void flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::half_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::half_t> >, false, false, false, false, true, false, true, false>(flash::Flash_fwd_params)",
+        [
+          1260,
+          10.918432000000013
+        ]
+      ],
+      [
+        "triton_poi_fused_mul_silu_1",
+        [
+          1344,
+          7.741974000000097
+        ]
+      ],
+      [
+        "void flash::flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::half_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::half_t> >, 4, 3, true>(flash::Flash_fwd_params)",
+        [
+          1260,
+          4.649793000000033
+        ]
+      ],
+      [
+        "triton_red_fused__to_copy_add_mean_mul_pow_rsqrt_2",
+        [
+          1344,
+          3.677686999999958
+        ]
+      ]
+    ]
+  },
+  {
+    "path": "results\\prefix-study\\published-20260913\\stage3\\gpu-only\\profiles\\81e71281a411_1.async_llm.1789304350911290875.pt.trace.json.gz",
+    "categories": {
+      "python_function": [
+        26880,
+        34983.936296000546
+      ],
+      "Trace": [
+        1,
+        964.899544
+      ]
+    },
+    "process": "API",
+    "copies": {},
+    "top_kernels": []
+  },
+  {
+    "path": "results\\prefix-study\\published-20260913\\stage3\\gpu-only\\profiles\\81e71281a411_47.1789304351519714371.pt.trace.json.gz",
+    "categories": {
+      "cpu_op": [
+        65232,
+        1305.7505210000184
+      ],
+      "python_function": [
+        118050,
+        57352.071928000216
+      ],
+      "overhead": [
+        4,
+        4.388565000000001
+      ],
+      "gpu_memcpy": [
+        1653,
+        1.3726590000000136
+      ],
+      "cuda_runtime": [
+        16939,
+        456.10541300000216
+      ],
+      "kernel": [
+        18486,
+        777.0712840000215
+      ],
+      "cuda_driver": [
+        507,
+        4.627983999999999
+      ],
+      "gpu_memset": [
+        300,
+        0.19983900000000035
+      ],
+      "Trace": [
+        1,
+        984.2447169999999
+      ]
+    },
+    "process": "GPU worker",
+    "copies": {
+      "Memcpy HtoD (Pageable -> Device)": [
+        345,
+        0.1155009999999999,
+        78756
+      ],
+      "Memcpy DtoH (Device -> Pageable)": [
+        48,
+        0.039521000000000014,
+        384
+      ],
+      "Memcpy DtoD (Device -> Device)": [
+        1260,
+        1.2176370000000019,
+        3870720
+      ]
+    },
+    "top_kernels": [
+      [
+        "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __half, __half, __half, float, false, true, true, false, 6, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float>)",
+        [
+          2568,
+          415.29474599999975
+        ]
+      ],
+      [
+        "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, __half, __half, __half, float, false, true, true, false, 7, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half const>, cublasGemvTensorStridedBatched<__half>, float>)",
+        [
+          1260,
+          152.48405399999962
+        ]
+      ],
+      [
+        "ampere_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_32x1_tn",
+        [
+          252,
+          118.90310299999999
+        ]
+      ],
+      [
+        "void cutlass::Kernel2<cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_128x2_tn_align8>(cutlass_80_wmma_tensorop_f16_s161616gemm_f16_32x32_128x2_tn_align8::Params)",
+        [
+          1260,
+          35.44924100000003
+        ]
+      ],
+      [
+        "void flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::half_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::half_t> >, false, false, false, false, true, false, true, false>(flash::Flash_fwd_params)",
+        [
+          1260,
+          10.462933000000016
+        ]
+      ],
+      [
+        "ampere_fp16_s1688gemm_fp16_128x128_ldg8_relu_f2f_stages_32x1_tn",
+        [
+          84,
+          9.773819999999999
+        ]
+      ],
+      [
+        "triton_poi_fused_mul_silu_1",
+        [
+          1344,
+          9.321235999999914
+        ]
+      ],
+      [
+        "void flash::flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::half_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::half_t> >, true, false, false, false, true, false, false, false>(flash::Flash_fwd_params)",
+        [
+          84,
+          5.305520000000002
+        ]
+      ],
+      [
+        "void flash::flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 64, 128, 4, false, false, cutlass::half_t, Flash_kernel_traits<128, 64, 128, 4, cutlass::half_t> >, 4, 3, true>(flash::Flash_fwd_params)",
+        [
+          1260,
+          4.52229900000004
+        ]
+      ],
+      [
+        "triton_red_fused__to_copy_add_mean_mul_pow_rsqrt_2",
+        [
+          1344,
+          2.9680889999999884
+        ]
+      ]
+    ]
+  }
+]

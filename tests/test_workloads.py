@@ -34,3 +34,19 @@ def test_session_chat_can_add_background_pressure_without_changing_count() -> No
     assert any(item.role == "foreground" and item.idle_gap_ms == 30_000 for item in items)
     assert any(item.role == "background" for item in items)
     assert len({item.prefix_id for item in items if item.role == "foreground"}) == 4
+
+
+def test_session_history_is_an_exact_prefix_and_reuse_counts_background() -> None:
+    items = build_workload("session-chat", 24, 16, 2026, sessions=4,
+                           rounds=2, background_unique_prefixes=2)
+    seen = {}
+    for index, item in enumerate(items):
+        if item.role == "background":
+            continue
+        if item.session_id in seen:
+            previous_index, previous = seen[item.session_id]
+            assert item.prompt.startswith(previous.prompt)
+            assert item.reuse_distance == index - previous_index == 12
+        seen[item.session_id] = index, item
+    warmup = build_workload("session-chat", 3, 16, 12026, sessions=4, rounds=2)
+    assert all(w.prompt[:100] != m.prompt[:100] for w in warmup for m in items)

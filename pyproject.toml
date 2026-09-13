@@ -23,6 +23,8 @@ dev = [
 vllm-lab-benchmark = "vllm_serving_lab.benchmark:main"
 vllm-lab-summarize = "vllm_serving_lab.summarize:main"
 vllm-lab-capacity = "vllm_serving_lab.capacity:main"
+vllm-lab-prefix-report = "vllm_serving_lab.prefix_report:main"
+vllm-lab-prefix-study = "vllm_serving_lab.prefix_study:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -13,25 +13,29 @@ The project deliberately stays small. It uses the official vLLM OpenAI-compatibl
 
 ## Prefix Cache three-stage study
 
-The branch includes three runnable experiment layers. `session-chat` models multi-turn support or coding-agent traffic with stable per-session prefixes, growing history, configurable idle gaps, and optional unique background prefixes. Run the first-stage matrix with:
+The [measured report](results/prefix-reports/20260913/README.md) contains 60 actual runs / 4,992 requests, per-stage CSVs, six PyTorch traces, and checksummed raw artifacts. At the tested workload, 128 to 256 MiB GPU KV restored prefix reuse; two-hit reduced L2 writes by 94.1%, but did not establish a universal end-to-end speedup.
+
+The controlled runner measures native prefix scenarios, then fixed-workload GPU capacity sensitivity, then three GPU/CPU cache variants. It resets caches after compilation/warm-up, checks exact prompt hashes across variants, and records both closed-loop and uniform open-loop traffic. Use a new output directory each time:
 
 ```powershell
-.\scripts\Run-PrefixScenarios.ps1 -IdleGapsMs 0,30000 -BackgroundUniquePrefixes 0,4 -Requests 32 -Repeats 1 -Offline
+python -m vllm_serving_lab.prefix_study --stage 1 --output results/prefix-study/my-stage1
+python -m vllm_serving_lab.prefix_study --stage 2 --output results/prefix-study/my-stage2
+python -m vllm_serving_lab.prefix_study --stage 3 --output results/prefix-study/my-stage3 --profile
 ```
 
-For capacity sensitivity, restart a clean vLLM process at each GPU KV pool size:
+Stage 1 has four synthetic support-session scenarios (0/2000 ms idle gap, 0/2 unique background requests per foreground turn) and native prefix-cache off/on controls. Stage 2 fixes `gap0_bg2` and scans 128/256/512 MiB. Stage 3 fixes 128 MiB GPU KV and compares `gpu-only`, `gpu-cpu-l2`, and `gpu-cpu-l2-two-hit` with 512 MiB CPU L2.
 
 ```powershell
-.\scripts\Run-KvCapacity.ps1 -CapacitiesMiB 128,256,512 -Requests 60 -Repeats 1 -Offline
+python -m vllm_serving_lab.prefix_report --stage stage1 --input-dir results/prefix-study/my-stage1 --output results/prefix-reports/my-stage1.md
 ```
 
-The third-stage runner compares GPU-only Prefix Cache with the vLLM 0.10.2 V1 `kv_transfer_config` path and the repository's `CpuL2Connector`. The connector reuses vLLM's official shared-storage implementation, adds a bounded host-side LRU and an optional two-hit admission policy, and is loaded dynamically inside the container:
+`CpuL2Connector` reuses the vLLM 0.10.2 V1 debug shared-storage tensor I/O. It caches exactly the first 512 tokens of each prompt, publishes only complete layer snapshots, applies bounded LRU, and optionally admits a prefix only on its second distinct request. The formal runner uses Linux tmpfs, so safetensors reside in RAM. Transfers and serialization are synchronous; this is a single-GPU experiment, not production LMCache.
 
 ```powershell
-.\scripts\Run-KvTiers.ps1 -GpuCapacityMiB 256 -CpuCapacityMiB 512 -Requests 60 -Offline
+python -m vllm_serving_lab.prefix_profile --input-dir results/prefix-study/my-stage3 --output results/prefix-reports/my-profile.md
 ```
 
-The host L2 stores safetensors under a mounted directory; this is an intentionally small single-host experiment, not a claim of RDMA, multi-node, compression, or production LMCache behavior. Every benchmark artifact includes request-level timing, workload metadata, and raw `/metrics` snapshots when the server exposes them.
+The older PowerShell sweep scripts remain useful for manual exploration; the controlled runner above is the report reproduction path. Reports preserve per-run distributions, foreground return latency, SLO goodput, token-level GPU hit ratios, server timing histograms, L2 byte/transfer counters, and a separate forced-GPU-miss correctness/profile probe.
 
 ## Architecture
 

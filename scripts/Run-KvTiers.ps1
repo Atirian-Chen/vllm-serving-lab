@@ -2,6 +2,10 @@
 param(
     [int]$Requests = 60,
     [int]$Concurrency = 8,
+    [int]$Sessions = 4,
+    [int]$Rounds = 4,
+    [int]$BackgroundUniquePrefixes = 2,
+    [int]$IdleGapMs = 0,
     [int]$Port = 8000,
     [int]$GpuCapacityMiB = 256,
     [int]$CpuCapacityMiB = 512,
@@ -30,8 +34,10 @@ try {
         & (Join-Path $PSScriptRoot "Start-VllmServer.ps1") @start | Out-Null
         try {
             & $Python -m vllm_serving_lab.benchmark --base-url "http://127.0.0.1:$Port" --model $model `
-                --workload coding-agent --config-name $tier.Name --concurrency $Concurrency --requests $Requests `
+                --workload session-chat --config-name $tier.Name --concurrency $Concurrency --requests $Requests `
                 --warmup 8 --output-tokens 32 --server-max-num-seqs 8 --server-image $image --run-number 1 `
+                --sessions $Sessions --rounds $Rounds --idle-gap-ms $IdleGapMs `
+                --background-unique-prefixes $BackgroundUniquePrefixes `
                 --prefix-caching --output (Join-Path $tierDir "run1.json")
             if ($LASTEXITCODE -ne 0) { throw "KV tier benchmark failed: $($tier.Name)." }
         }

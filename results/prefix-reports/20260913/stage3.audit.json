@@ -1,0 +1,9 @@
+{
+  "complete_matrix": true,
+  "all_requests_successful": true,
+  "counters_match_client": true,
+  "open_loop_load_valid": true,
+  "identical_prompts_across_variants": true,
+  "l2_loads_observed_in_both_policies": true,
+  "cpu_capacity_respected": true
+}

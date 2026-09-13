@@ -4,6 +4,10 @@ param(
     [int]$Requests = 60,
     [int]$Repeats = 1,
     [int]$Concurrency = 8,
+    [int]$Sessions = 4,
+    [int]$Rounds = 4,
+    [int]$BackgroundUniquePrefixes = 2,
+    [int]$IdleGapMs = 0,
     [int]$Port = 8000,
     [string]$RunId = (Get-Date -Format "yyyyMMdd-HHmmss"),
     [string]$Python,
@@ -31,9 +35,11 @@ try {
             for ($repeat = 1; $repeat -le $Repeats; $repeat++) {
                 $output = Join-Path $capacityDir ("run{0}.json" -f $repeat)
                 & $Python -m vllm_serving_lab.benchmark --base-url "http://127.0.0.1:$Port" `
-                    --model $model --workload coding-agent --config-name ("kv-{0}MiB" -f $capacity) `
+                    --model $model --workload session-chat --config-name ("kv-{0}MiB" -f $capacity) `
                     --concurrency $Concurrency --requests $Requests --warmup 8 --output-tokens 32 `
                     --server-max-num-seqs 8 --server-image $image --run-number $repeat `
+                    --sessions $Sessions --rounds $Rounds --idle-gap-ms $IdleGapMs `
+                    --background-unique-prefixes $BackgroundUniquePrefixes `
                     --prefix-caching --output $output
                 if ($LASTEXITCODE -ne 0) { throw "KV capacity benchmark failed at ${capacity}MiB repeat $repeat." }
             }

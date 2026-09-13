@@ -131,6 +131,19 @@ TTFT 从实际发送计时，到收到首个非空内容为止。TPOT 沿用现�
 
 ## 三阶段 Prefix Cache 实验
 
+[完整中文实测报告](results/prefix-reports/20260913/README.md) 包含 60 次运行、4,992 个测量请求、三阶段 CSV、6 份 PyTorch trace，以及可核验的原始数据。核心观察是 128→256 MiB 恢复前缀复用；two-hit 减少 94.1% 的 CPU L2 写入，但没有证明所有负载下端到端性能都更好。
+
+正式数据使用统一的 `prefix_study` 入口复现，每次指定一个新的输出目录：
+
+```powershell
+python -m vllm_serving_lab.prefix_study --stage 1 --output results/prefix-study/my-stage1
+python -m vllm_serving_lab.prefix_study --stage 2 --output results/prefix-study/my-stage2
+python -m vllm_serving_lab.prefix_study --stage 3 --output results/prefix-study/my-stage3 --profile
+python -m vllm_serving_lab.prefix_report --stage stage1 --input-dir results/prefix-study/my-stage1 --output results/prefix-reports/my-stage1.md
+```
+
+默认每组重复 2 次。第一阶段为原生缓存开关与 4 种会话场景；第二阶段固定 `gap0_bg2` 扫描 128/256/512 MiB；第三阶段固定 GPU 128 MiB、CPU 512 MiB，对比 `gpu-only`、`gpu-cpu-l2`、`gpu-cpu-l2-two-hit`。closed-loop 并发为 4，open-loop 测量恒定到达率，空闲间隔场景只在 closed-loop 下运行。以下 PowerShell 脚本保留作为手动探索入口；正式报告采用上面的统一入口及其缓存重置、计数核验和数据归档流程。
+
 ### 第一阶段：真实场景
 
 `session-chat` 负载模拟客服或 Agent 的多轮会话。每个 session 有稳定的 system/tool 前缀，历史按轮次增长；`--idle-gap-ms` 控制会话空闲时间，`--background-unique-prefixes` 插入不同租户的冷前缀，制造 reuse distance 和 LRU 压力。请求记录包含 `session_id`、`prefix_id`、`expected_shared_tokens`、`reuse_distance`、`role`。
@@ -139,7 +152,7 @@ TTFT 从实际发送计时，到收到首个非空内容为止。TPOT 沿用现�
 .\scripts\Run-PrefixScenarios.ps1 -IdleGapsMs 0,30000 -BackgroundUniquePrefixes 0,4 -Requests 32 -Repeats 1 -Offline
 ```
 
-脚本对每个场景分别重启 Prefix Cache 开启和关闭的服务，结果位于 `results/prefix-scenarios/<run-id>/`。`expected_shared_tokens` 是 workload 的理论共享长度，不等于服务端实际命中 token；命中率应结合 vLLM Prometheus 指标或日志核对。
+脚本对每个场景分别重启 Prefix Cache 开启和关闭的服务，结果位于 `results/prefix-scenarios/<run-id>/`。`expected_shared_tokens` 是保留的旧字段名，内容为按英文单词数估计的共享长度，不是 tokenizer 结果或实际命中 token。正式报告的输入 token 来自 usage，命中 token 来自 vLLM Prometheus。历史是固定文本回放，不使用上一轮模型生成内容构造下一轮请求。
 
 ### 第二阶段：可变 GPU KV 容量
 
@@ -159,19 +172,6 @@ vLLM 0.10.2 V1 引擎提供 KV connector。仓库新增 `CpuL2Connector`，复�
 .\scripts\Run-KvTiers.ps1 -GpuCapacityMiB 256 -CpuCapacityMiB 512 -Requests 60 -Offline
 ```
 
-脚本比较 `gpu-only` 和 `gpu-cpu-l2`。L1 是 vLLM GPU Prefix Cache；L2 是挂载到容器的 host 目录，KV 以 safetensors 保存，命中后加载回 GPU。这个版本不做 RDMA、跨机共享、压缩或复杂一致性协议，目标是测清楚 GPU 命中、Host 回载和完全重算三种路径的端到端代价。Host L2 是实验 connector，不应描述成生产级 LMCache 或分布式缓存。
+第三阶段比较 `gpu-only`、`gpu-cpu-l2` 和 `gpu-cpu-l2-two-hit`。L1 是 vLLM GPU Prefix Cache；正式实验的 L2 是容器内的 Linux tmpfs 内存文件系统，缓存每个 prompt 最前面的 512 个 token，按 16-token block 对齐，28 层全部写完后才发布为可命中条目。CPU/GPU 拷贝和 safetensors 序列化是同步路径。`two_hit` 按不同请求计数，第一次不写入，第二次开始允许写入；调度重试不能冒充第二次访问。这个实验 connector 不应描述成生产级 LMCache、异步 pinned-memory offload 或分布式缓存。
 
 面试时可以按同一条主线复述：先用真实 reuse distance 建模流量，再固定 workload 扫 GPU 容量，最后增加一个有容量和淘汰策略的 host tier；每一步都用 TTFT P95、TPOT、goodput、SLO 和 profile 判断收益来自缓存命中、缓存搬运还是排队。
-# Prefix Cache 深度实验路线
-
-本分支按三阶段构建可复现实验：
-
-1. `coding-agent` workload 模拟多租户 Coding/Agent 请求，记录 `prefix_id`、共享 token 数和 reuse distance，用 close-loop 与 open-loop 对比 Prefix Cache 开关。
-2. `Start-VllmServer.ps1 -KvCacheMemoryBytes` 显式限制 GPU KV pool；建议扫描 128/256/512 MiB，观察 eviction、重算、TTFT P95 与容量边界。
-3. GPU-only 作为基线，随后接入与当前 vLLM/PyTorch/CUDA 版本严格匹配的 LMCache CPU backend，比较 GPU hit、CPU 回载和 full miss。实验结果必须分类记录，不能用 TTFT 单独推断命中。
-
-示例：
-
-```powershell
-python -m vllm_serving_lab.benchmark --model Qwen/Qwen2.5-1.5B-Instruct --workload coding-agent --config-name agent --concurrency 8 --requests 60 --server-max-num-seqs 8 --server-image vllm/vllm-openai:v0.10.2 --prefix-caching --output results/agent.json
-```
