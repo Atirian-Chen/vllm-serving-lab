@@ -13,7 +13,7 @@ The project deliberately stays small. It uses the official vLLM OpenAI-compatibl
 
 ## Prefix Cache three-stage study
 
-The [measured report](results/prefix-reports/20260913/README.md) contains 60 actual runs / 4,992 requests, per-stage CSVs, six PyTorch traces, and checksummed raw artifacts. At the tested workload, 128 to 256 MiB GPU KV restored prefix reuse; two-hit reduced L2 writes by 94.1%, but did not establish a universal end-to-end speedup.
+The [consolidated experiment report](results/EXPERIMENT-REPORT.md) covers the historical serving baselines, SLO capacity sweep, 60 three-stage Prefix/KV Cache runs, and the 2026-09-15 global-shared versus tenant-namespaced comparison. At the tested workload, 128 to 256 MiB GPU KV restored prefix reuse; two-hit reduced L2 writes by 94.1%, but did not establish a universal end-to-end speedup.
 
 The controlled runner measures native prefix scenarios, then fixed-workload GPU capacity sensitivity, then three GPU/CPU cache variants. It resets caches after compilation/warm-up, checks exact prompt hashes across variants, and records both closed-loop and uniform open-loop traffic. Use a new output directory each time:
 

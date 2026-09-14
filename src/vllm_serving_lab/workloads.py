@@ -25,6 +25,8 @@ class WorkloadItem:
     idle_gap_ms: int = 0
     role: str = "foreground"
     background_unique_prefixes: int = 0
+    tenant_id: str | None = None
+    cache_salt: str | None = None
 
 
 def _word_block(word_count: int, offset: int = 0) -> str:
@@ -122,6 +124,114 @@ def build_coding_agent_workload(
             reuse_distance=reuse_distance,
         ))
     return items
+
+
+def build_tenant_shared_prefix_workload(
+    count: int,
+    output_tokens: int,
+    seed: int,
+    tenants: int = 4,
+    rounds: int = 8,
+    background_unique_prefixes: int = 2,
+    tenant_namespace: bool = False,
+) -> list[WorkloadItem]:
+    """Build a shared-pool multi-tenant trace with optional cache isolation.
+
+    All tenants use the same public policy/tool prefix, while their private
+    suffix and append-only history remain distinct.  This makes a global cache
+    able to share the public prefix, whereas ``tenant_namespace`` sends a
+    per-tenant cache salt without changing the prompt bytes.
+    """
+    if tenants <= 0 or rounds <= 0:
+        raise ValueError("tenants and rounds must be positive")
+    if background_unique_prefixes < 0:
+        raise ValueError("background_unique_prefixes must be nonnegative")
+
+    rng = random.Random(seed)
+    total_foreground = min(
+        tenants * rounds,
+        max(1, math.ceil(count / (background_unique_prefixes + 1))),
+    )
+    public_prefix = (
+        "Shared customer support policy, tool contract, and retrieval rules. "
+        + _word_block(512)
+    )
+    histories: dict[int, str] = {tenant: "" for tenant in range(tenants)}
+    items: list[WorkloadItem] = []
+    index = 0
+
+    for round_index in range(rounds):
+        for tenant in range(tenants):
+            if index >= total_foreground:
+                break
+            for background in range(background_unique_prefixes):
+                bg_id = f"tenant-bg-{seed}-{round_index:02d}-{tenant:02d}-{background:03d}"
+                bg_prompt = (
+                    f"One-shot tenant request {bg_id}. "
+                    + _word_block(512 + background % 32,
+                                  rng.randrange(len(COMMON_WORDS)))
+                    + "\nQuestion: summarize the request."
+                )
+                items.append(WorkloadItem(
+                    request_id=bg_id,
+                    prompt=bg_prompt,
+                    target_prompt_words=len(bg_prompt.split()),
+                    output_tokens=output_tokens,
+                    session_id=bg_id,
+                    prefix_id=bg_id,
+                    role="background",
+                    background_unique_prefixes=background_unique_prefixes,
+                    tenant_id=f"tenant-{tenant:02d}",
+                    cache_salt=(bg_id if tenant_namespace else None),
+                ))
+
+            tenant_id = f"tenant-{tenant:02d}"
+            private_prefix = (
+                f"\nPrivate workspace for {tenant_id}. "
+                "Do not share tenant-specific records."
+            )
+            suffix = (
+                f"\nTurn {round_index}: diagnose the issue and propose the next action. "
+                + _word_block(32, rng.randrange(len(COMMON_WORDS)))
+            )
+            prompt_prefix = public_prefix + private_prefix + histories[tenant]
+            prompt = prompt_prefix + suffix
+            items.append(WorkloadItem(
+                request_id=f"tenant-{tenant:02d}-round-{round_index:02d}",
+                prompt=prompt,
+                target_prompt_words=len(prompt.split()),
+                output_tokens=output_tokens,
+                session_id=tenant_id,
+                prefix_id="public-support-policy",
+                expected_shared_tokens=len(public_prefix.split()),
+                reuse_distance=(None if round_index == 0
+                                 else background_unique_prefixes * tenants + tenants),
+                role="foreground",
+                background_unique_prefixes=background_unique_prefixes,
+                tenant_id=tenant_id,
+                cache_salt=(tenant_id if tenant_namespace else None),
+            ))
+            histories[tenant] += suffix + "\nAssistant: " + _word_block(16, tenant)
+            index += 1
+        if index >= total_foreground:
+            break
+
+    while len(items) < count:
+        bg_id = f"tenant-bg-tail-{len(items):04d}"
+        prompt = f"One-shot cold request {bg_id}. " + _word_block(256, rng.randrange(len(COMMON_WORDS)))
+        items.append(WorkloadItem(
+            request_id=bg_id,
+            prompt=prompt,
+            target_prompt_words=len(prompt.split()),
+            output_tokens=output_tokens,
+            session_id=bg_id,
+            prefix_id=bg_id,
+            role="background",
+            background_unique_prefixes=background_unique_prefixes,
+            tenant_id="cold",
+            cache_salt=(bg_id if tenant_namespace else None),
+        ))
+    return items[:count]
 
 
 def build_session_chat_workload(
@@ -226,5 +336,15 @@ def build_workload(kind: str, count: int, output_tokens: int, seed: int, **optio
             rounds=int(options.get("rounds", 4)),
             idle_gap_ms=int(options.get("idle_gap_ms", 0)),
             background_unique_prefixes=int(options.get("background_unique_prefixes", 0)),
+        )
+    if kind == "tenant-shared":
+        return build_tenant_shared_prefix_workload(
+            count,
+            output_tokens,
+            seed,
+            tenants=int(options.get("tenants", 4)),
+            rounds=int(options.get("rounds", 8)),
+            background_unique_prefixes=int(options.get("background_unique_prefixes", 2)),
+            tenant_namespace=bool(options.get("tenant_namespace", False)),
         )
     raise ValueError(f"unsupported workload: {kind}")

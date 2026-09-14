@@ -25,6 +25,8 @@ class RequestResult:
     idle_gap_ms: int = 0
     role: str = "foreground"
     background_unique_prefixes: int = 0
+    tenant_id: str | None = None
+    cache_salt: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)

@@ -38,6 +38,8 @@ def row(payload, path):
     hits = delta(payload, "vllm:prefix_cache_hits_total")
     result = dict(name=study["server"]["name"], scenario=study["scenario"], mode=study["mode"],
         repeat=study["repeat"], path=str(path), prompt_sha256=study["prompt_sha256"],
+        tenant_namespace=study.get("tenant_namespace"),
+        cache_salt_count=study.get("cache_salt_count"),
         requests=len(records), success_rate=summary["success_rate"],
         ttft_p50_ms=summary["ttft_p50_ms"], ttft_p95_ms=summary["ttft_p95_ms"],
         fg_ttft_p50_ms=percentile([r["ttft_ms"] for r in foreground], .5),
@@ -139,11 +141,16 @@ def report(rows, stage, root):
     repeats = plan["repeats"]
     variants = {"stage1": {"pcoff", "pcon"},
                 "stage2": {"128MiB", "256MiB", "512MiB"},
-                "stage3": {"gpu-only", "gpu-cpu-l2", "gpu-cpu-l2-two-hit"}}[stage]
-    cases = [("gap0_bg0", "closed"), ("gap0_bg0", "open-6"),
-             ("gap0_bg2", "closed"), ("gap0_bg2", "open-6"),
-             ("gap2000_bg0", "closed"), ("gap2000_bg2", "closed")] if stage == "stage1" else [
-                 ("gap0_bg2", mode) for mode in ("closed", "open-3", "open-6")]
+                "stage3": {"gpu-only", "gpu-cpu-l2", "gpu-cpu-l2-two-hit"},
+                "tenant": {"global-shared", "tenant-namespaced"}}[stage]
+    if stage == "stage1":
+        cases = [("gap0_bg0", "closed"), ("gap0_bg0", "open-6"),
+                 ("gap0_bg2", "closed"), ("gap0_bg2", "open-6"),
+                 ("gap2000_bg0", "closed"), ("gap2000_bg2", "closed")]
+    elif stage == "tenant":
+        cases = [("tenant-shared", mode) for mode in ("closed", "open-6")]
+    else:
+        cases = [("gap0_bg2", mode) for mode in ("closed", "open-3", "open-6")]
     expected = {(scenario, variant, mode, repeat) for scenario, mode in cases
                 for variant in variants for repeat in range(1, repeats + 1)}
     actual = {(r["scenario"], r["name"], r["mode"], r["repeat"]) for r in rows}
@@ -160,6 +167,24 @@ def report(rows, stage, root):
             all(r["l2_loads"] > 0 and r["l2_hits"] == r["l2_loads"] for r in rows if r["name"] == name)
             for name in ("gpu-cpu-l2", "gpu-cpu-l2-two-hit"))
         checks["cpu_capacity_respected"] = all(r["l2_resident_mib"] <= 512 for r in rows)
+    if stage == "tenant":
+        checks["namespace_contract"] = all(
+            r["tenant_namespace"] == (r["name"] == "tenant-namespaced")
+            and (r["cache_salt_count"] == 0 if r["name"] == "global-shared"
+                 else r["cache_salt_count"] > 0)
+            for r in rows
+        )
+        # A global namespace is expected to keep the shared public prefix on
+        # the 128 MiB GPU tier, so zero CPU loads is a valid result. The
+        # namespaced policy must prove that the same physical L2 can serve a
+        # GPU miss after the per-tenant salt blocks cross-tenant reuse.
+        global_rows = [r for r in rows if r["name"] == "global-shared"]
+        tenant_rows = [r for r in rows if r["name"] == "tenant-namespaced"]
+        checks["namespace_load_behavior_observed"] = (
+            all(r["l2_loads"] == 0 for r in global_rows)
+            and all(r["l2_loads"] > 0 and r["l2_hits"] == r["l2_loads"]
+                    for r in tenant_rows))
+        checks["cpu_capacity_respected"] = all(r["l2_resident_mib"] <= 512 for r in rows)
     lines = [f"# {stage}: measured prefix-cache study", "",
              f"Raw artifact directory: `{root.as_posix()}`", "",
              f"{len(rows)} measured runs, {sum(r['requests'] for r in rows)} requests. "
@@ -175,7 +200,17 @@ def report(rows, stage, root):
              "- Joint SLO: successful request, TTFT <= 300 ms, TPOT <= 40 ms/token. Goodput includes the full drain period.",
              "- Stage 1 uses automatic native GPU KV allocation and no L2. Stage 2 changes only startup KV bytes. Stage 3 uses GPU 128 MiB and CPU 512 MiB.", "",
              "## End-to-end results", ""]
+    if stage == "tenant":
+        lines[lines.index("## End-to-end results") - 1:lines.index("## End-to-end results")] = [
+            "- Four tenants share an identical public policy/tool prefix; private suffixes and histories remain tenant-specific.",
+            "- `global-shared` sends no cache salt. `tenant-namespaced` sends one vLLM `cache_salt` per tenant and includes the same namespace in the CPU L2 key.",
+            "- Both variants use GPU KV 128 MiB, CPU L2 512 MiB, two-hit admission, closed-loop concurrency 4, and open-loop 6 req/s.",
+            "- Prompt bytes, request order, model, capacity, and load are identical; only cache namespace metadata changes.",
+            "",
+        ]
     identity = [("scenario", "Scenario"), ("name", "Variant"), ("mode", "Load")]
+    if stage == "tenant":
+        identity += [("tenant_namespace", "Namespace"), ("cache_salt_count", "Salt count")]
     lines += table(grouped, identity + [("runs", "Runs"), ("ttft_p50_ms", "TTFT P50 ms"),
         ("ttft_p95_ms", "TTFT P95 ms"), ("ttft_p95_range", "P95 repeat range"),
         ("latency_p95_ms", "E2E P95 ms"), ("tpot_p95_ms", "TPOT P95 ms/tok"),
@@ -192,7 +227,7 @@ def report(rows, stage, root):
     lines += ["", "Server means use Prometheus histogram sum/count deltas. They are request wall durations, "
               "not CUDA kernel times and cannot be added to client percentiles. 1 s telemetry may miss brief peaks; "
               "GPU memory includes desktop/driver allocations. GPU cache usage gauge measures active allocated blocks, not all reusable cached prefixes.", ""]
-    if stage == "stage3":
+    if stage in {"stage3", "tenant"}:
         lines += ["## L2 evidence", ""]
         lines += table(grouped, identity + [("l2_loads", "Loads"), ("l2_external_tokens", "Extra reused tokens"),
             ("l2_stores", "Stores"), ("l2_rejected", "Admission rejects"), ("l2_evictions", "Evictions"),
@@ -211,7 +246,7 @@ def report(rows, stage, root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stage", choices=("stage1", "stage2", "stage3"), required=True)
+    parser.add_argument("--stage", choices=("stage1", "stage2", "stage3", "tenant"), required=True)
     parser.add_argument("--input-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

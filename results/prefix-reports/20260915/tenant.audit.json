@@ -1,0 +1,10 @@
+{
+  "complete_matrix": true,
+  "all_requests_successful": true,
+  "counters_match_client": true,
+  "open_loop_load_valid": true,
+  "identical_prompts_across_variants": true,
+  "namespace_contract": true,
+  "namespace_load_behavior_observed": true,
+  "cpu_capacity_respected": true
+}

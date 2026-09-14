@@ -118,6 +118,8 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
         "rounds": getattr(args, "rounds", 4),
         "idle_gap_ms": getattr(args, "idle_gap_ms", 0),
         "background_unique_prefixes": getattr(args, "background_unique_prefixes", 0),
+        "tenants": getattr(args, "tenants", 4),
+        "tenant_namespace": getattr(args, "tenant_namespace", False),
     }
     measured_items = build_workload(args.workload, args.requests, args.output_tokens, args.seed, **workload_options)
     warmup_items = (build_workload(args.workload, args.warmup, min(args.output_tokens, 16), args.seed + 10_000, **workload_options)
@@ -180,6 +182,8 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
             "rounds": workload_options["rounds"],
             "idle_gap_ms": workload_options["idle_gap_ms"],
             "background_unique_prefixes": workload_options["background_unique_prefixes"],
+            "tenants": workload_options["tenants"],
+            "tenant_namespace": workload_options["tenant_namespace"],
         },
         "system": _system_metadata(),
         "summary": summary,
@@ -199,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Benchmark a vLLM OpenAI-compatible streaming endpoint.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--model", required=True)
-    parser.add_argument("--workload", choices=("mixed", "shared-prefix", "coding-agent", "session-chat"), required=True)
+    parser.add_argument("--workload", choices=("mixed", "shared-prefix", "coding-agent", "session-chat", "tenant-shared"), required=True)
     parser.add_argument("--config-name", required=True)
     parser.add_argument("--concurrency", type=int, required=True)
     parser.add_argument("--requests", type=int, default=120)

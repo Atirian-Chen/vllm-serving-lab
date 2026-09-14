@@ -131,7 +131,7 @@ TTFT 从实际发送计时，到收到首个非空内容为止。TPOT 沿用现�
 
 ## 三阶段 Prefix Cache 实验
 
-[完整中文实测报告](results/prefix-reports/20260913/README.md) 包含 60 次运行、4,992 个测量请求、三阶段 CSV、6 份 PyTorch trace，以及可核验的原始数据。核心观察是 128→256 MiB 恢复前缀复用；two-hit 减少 94.1% 的 CPU L2 写入，但没有证明所有负载下端到端性能都更好。
+[完整中文实验数据总报告](results/EXPERIMENT-REPORT.md) 汇总历史 Continuous Batching/Prefix Cache 基线、SLO 开环容量、60 次三阶段 KV Cache 运行、租户 namespace 对照、三阶段 CSV、PyTorch trace 和可核验的原始数据。核心观察是 128→256 MiB 恢复前缀复用；two-hit 减少 94.1% 的 CPU L2 写入，但没有证明所有负载下端到端性能都更好。
 
 正式数据使用统一的 `prefix_study` 入口复现，每次指定一个新的输出目录：
 

@@ -37,7 +37,7 @@ class CpuL2Connector(SharedStorageConnector):
             raise ValueError("This experimental connector supports one GPU only")
         self._layer_count = vllm_config.model_config.get_num_layers(vllm_config.parallel_config)
         self._seen: OrderedDict[str, int] = OrderedDict()
-        self._decisions: dict[str, tuple[str, bool]] = {}
+        self._decisions: dict[str, tuple[str, bool, list[str]]] = {}
         self._saved_layers: dict[str, set[str]] = {}
         self._reset_generation = None
         self._stats = dict(lookups=0, hits=0, external_tokens=0, rejected=0,
@@ -49,6 +49,14 @@ class CpuL2Connector(SharedStorageConnector):
 
     def _folder(self, tokens, mm_hashes):
         return self._generate_foldername_debug(torch.tensor(tokens[:self._prefix_tokens]), mm_hashes)
+
+    @staticmethod
+    def _request_hashes(request):
+        hashes = list(request.mm_hashes)
+        cache_salt = getattr(request, "cache_salt", None)
+        if cache_salt:
+            hashes.append(f"__vllm_cache_salt__:{cache_salt}")
+        return hashes
 
     def _write_stats(self):
         self._stats_path.write_text(json.dumps(self._stats), encoding="utf-8")
@@ -64,16 +72,17 @@ class CpuL2Connector(SharedStorageConnector):
             return 0, False
         rid = request.request_id
         if rid not in self._decisions:
-            folder = self._folder(request.prompt_token_ids, request.mm_hashes)
+            hashes = self._request_hashes(request)
+            folder = self._folder(request.prompt_token_ids, hashes)
             seen = self._seen.pop(folder, 0) + 1
             self._seen[folder] = seen
             if len(self._seen) > 8192:
                 self._seen.popitem(last=False)
             admit = self._admission_policy == "lru" or seen >= 2
-            self._decisions[rid] = folder, admit
+            self._decisions[rid] = folder, admit, hashes
             self._stats["lookups"] += 1
             self._stats["rejected"] += int(not admit)
-        folder, _ = self._decisions[rid]
+        folder, _, _ = self._decisions[rid]
         if Path(folder, "complete").is_file():
             os.utime(folder, None)
             external = max(0, self._prefix_tokens - num_computed_tokens)
@@ -103,18 +112,19 @@ class CpuL2Connector(SharedStorageConnector):
             rid = req.req_id
             if rid not in self._decisions:
                 continue
-            folder, admit = self._decisions[rid]
+            folder, admit, hashes = self._decisions[rid]
             if rid in self._requests_need_load:
-                self._add_meta(meta, req.prompt_token_ids, req.block_ids[0], req.mm_hashes, False)
+                self._add_meta(meta, req.prompt_token_ids, req.block_ids[0], hashes, False)
             elif admit and not Path(folder, "complete").exists():
                 computed = req.num_computed_tokens + scheduler_output.num_scheduled_tokens[rid]
                 if computed >= self._prefix_tokens:
-                    self._add_meta(meta, req.prompt_token_ids, req.block_ids[0], req.mm_hashes, True)
+                    self._add_meta(meta, req.prompt_token_ids, req.block_ids[0], hashes, True)
         cached = scheduler_output.scheduled_cached_reqs
         for i, rid in enumerate(cached.req_ids):
             if rid in self._requests_need_load and cached.resumed_from_preemption[i]:
                 req = self._requests_need_load[rid]
-                self._add_meta(meta, req.prompt_token_ids, cached.new_block_ids[i][0], req.mm_hashes, False)
+                self._add_meta(meta, req.prompt_token_ids, cached.new_block_ids[i][0],
+                               self._request_hashes(req), False)
         self._requests_need_load.clear()
         for rid in scheduler_output.finished_req_ids:
             self._decisions.pop(rid, None)

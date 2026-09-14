@@ -24,7 +24,9 @@ async def measure(args, rate: float, repeat: int) -> dict:
     items = build_workload(args.workload, count, args.output_tokens, seed,
                            sessions=args.sessions, rounds=args.rounds,
                            idle_gap_ms=args.idle_gap_ms,
-                           background_unique_prefixes=args.background_unique_prefixes)
+                           background_unique_prefixes=args.background_unique_prefixes,
+                           tenants=getattr(args, "tenants", 4),
+                           tenant_namespace=getattr(args, "tenant_namespace", False))
     records = [None] * count
     results = [None] * count
     samples = []
@@ -34,7 +36,7 @@ async def measure(args, rate: float, repeat: int) -> dict:
     async with StreamingCompletionClient(settings, max_connections=args.max_inflight + 8) as client:
         warmup = (build_workload(args.workload, args.warmup, args.output_tokens, seed + 10_000,
                                 sessions=args.sessions, rounds=args.rounds,
-                                idle_gap_ms=0, background_unique_prefixes=0) if args.warmup else [])
+                                 idle_gap_ms=0, background_unique_prefixes=0) if args.warmup else [])
         warmed = await asyncio.gather(*(client.generate(item, seed) for item in warmup))
         if not all(item.ok for item in warmed):
             raise RuntimeError("Warm-up failed: " + str([item.error for item in warmed if not item.ok]))

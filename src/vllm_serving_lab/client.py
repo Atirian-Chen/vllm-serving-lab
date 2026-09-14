@@ -63,6 +63,8 @@ class StreamingCompletionClient:
             "stream_options": {"include_usage": True},
             "ignore_eos": self._settings.ignore_eos,
         }
+        if item.cache_salt is not None:
+            payload["cache_salt"] = item.cache_salt
 
         started = time.perf_counter()
         first_token_at: float | None = None
@@ -120,6 +122,7 @@ class StreamingCompletionClient:
                 expected_shared_tokens=item.expected_shared_tokens,
                 reuse_distance=item.reuse_distance, idle_gap_ms=item.idle_gap_ms,
                 role=item.role, background_unique_prefixes=item.background_unique_prefixes,
+                tenant_id=item.tenant_id, cache_salt=item.cache_salt,
             )
         except Exception as error:  # Request-level failures belong in the result artifact.
             return RequestResult(
@@ -137,4 +140,5 @@ class StreamingCompletionClient:
                 expected_shared_tokens=item.expected_shared_tokens,
                 reuse_distance=item.reuse_distance, idle_gap_ms=item.idle_gap_ms,
                 role=item.role, background_unique_prefixes=item.background_unique_prefixes,
+                tenant_id=item.tenant_id, cache_salt=item.cache_salt,
             )
