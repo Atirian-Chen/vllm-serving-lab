@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vllm-gateway-config
+  namespace: vllm-lab
+data:
+  # Docker Desktop exposes host services through this DNS name. Start vLLM
+  # with -PublishAddress 0.0.0.0 so Kubernetes pods can reach it.
+  VLLM_BASE_URL: http://host.docker.internal:8000
+  UPSTREAM_TIMEOUT_SECONDS: "120"
+  READINESS_TIMEOUT_SECONDS: "2"

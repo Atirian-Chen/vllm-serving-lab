@@ -9,7 +9,23 @@ A compact, reproducible single-GPU serving benchmark for four practical vLLM top
 - Prefix caching for requests that share a long prompt prefix.
 - Capacity under joint TTFT/TPOT constraints with a fixed request arrival rate.
 
-The project deliberately stays small. It uses the official vLLM OpenAI-compatible server, a shared asynchronous Python client, and PowerShell experiment runners. It contains no web UI, database, Kubernetes, multi-GPU deployment, RAG, or agent workflow.
+The project deliberately stays small. It uses the official vLLM OpenAI-compatible server, a shared asynchronous Python client, and PowerShell experiment runners. The optional `gateway/` and `k8s/` extension adds a small CPU gateway deployment around the existing GPU server; it does not move vLLM into a Kubernetes GPU cluster.
+
+## Kubernetes gateway extension
+
+The optional extension adds a FastAPI gateway for the existing `POST /v1/completions` streaming API. Kubernetes manages two CPU gateway replicas with a Deployment, ClusterIP Service, ConfigMap, startup/liveness/readiness probes, resource requests and a rolling update strategy. The vLLM GPU container remains outside the cluster and is reached through a locally configured host address.
+
+```powershell
+.\scripts\Build-Gateway.ps1 -Tag v1
+kubectl apply -k .\k8s
+.\scripts\Verify-K8s.ps1
+```
+
+See [`k8s/README.md`](k8s/README.md) for the local cluster prerequisites and acceptance checks, and [`results/k8s/implementation-report.md`](results/k8s/implementation-report.md) for the implementation status and evidence boundaries. The gateway tests run separately from the benchmark dependencies:
+
+```powershell
+python -m pytest tests/test_gateway.py -q
+```
 
 ## Prefix Cache three-stage study
 

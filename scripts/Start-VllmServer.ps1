@@ -12,6 +12,8 @@ param(
     [switch]$EnablePrefixCaching,
 
     [int]$Port = 8000,
+    [ValidatePattern('^[A-Za-z0-9.:-]+$')]
+    [string]$PublishAddress = "127.0.0.1",
     [int]$MaxModelLen = 2048,
     [double]$GpuMemoryUtilization = 0.85,
     [long]$KvCacheMemoryBytes = 0,
@@ -74,7 +76,7 @@ $dockerArgs = @(
     "--gpus", "all",
     "--ipc=host",
     "--name", $ContainerName,
-    "--publish", "127.0.0.1:${Port}:8000",
+    "--publish", "${PublishAddress}:${Port}:8000",
     "--volume", "${HuggingFaceCache}:/root/.cache/huggingface",
     "--volume", "${VllmCache}:/root/.cache/vllm",
     "--volume", "${projectRoot}/src:/opt/vllm-lab/src:ro"

@@ -7,7 +7,23 @@
 - 对共享长前缀流量进行 Prefix Cache 开关实验。
 - 在联合 TTFT/TPOT 延迟约束下，通过固定到达率压测分析容量边界。
 
-项目仅包含官方 vLLM OpenAI-compatible 服务、一个共享的异步流式压测客户端和 PowerShell 实验编排脚本。不包含前端、数据库、Kubernetes、多卡并行、RAG 或 Agent。
+项目主要包含官方 vLLM OpenAI-compatible 服务、一个共享的异步流式压测客户端和 PowerShell 实验编排脚本。新增的可选 `gateway/` 和 `k8s/` 扩展在现有 GPU 服务前增加轻量 CPU 网关，但不会把 vLLM 迁移到 Kubernetes GPU 集群。
+
+## Kubernetes 网关扩展
+
+扩展为现有 `POST /v1/completions` 流式接口增加 FastAPI 网关。Kubernetes 使用 Deployment 管理两个 CPU 网关副本，用 ClusterIP Service 提供稳定入口，用 ConfigMap 注入上游地址，并配置 startup/liveness/readiness 探针、资源 requests/limits 和滚动更新。vLLM GPU 容器仍在集群外运行，通过本地配置的宿主机地址访问。
+
+```powershell
+.\scripts\Build-Gateway.ps1 -Tag v1
+kubectl apply -k .\k8s
+.\scripts\Verify-K8s.ps1
+```
+
+从零运行和验收步骤见 [`k8s/README.md`](k8s/README.md)，实现状态和验证边界见 [`results/k8s/implementation-report.md`](results/k8s/implementation-report.md)。网关单测独立运行：
+
+```powershell
+python -m pytest tests/test_gateway.py -q
+```
 
 ## 实验矩阵
 
