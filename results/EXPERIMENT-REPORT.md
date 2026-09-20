@@ -1,6 +1,6 @@
 # vLLM Serving Lab 实验数据总报告
 
-更新时间：2026-09-15。本文把项目中已经完成的服务、Prefix Cache、容量、SLO、多级 KV Cache、租户隔离和 profile 实验放在同一个数据入口中。表格使用各次运行的中位数；每次运行的原始请求记录仍保留在对应目录，不能把不同实验的中位数拼成一条新的样本分布。
+更新时间：2026-09-21。本文把项目中已经完成的服务、Prefix Cache、容量、SLO、多级 KV Cache、租户隔离、profile 和 Kubernetes 网关子实验放在同一个数据入口中。表格使用各次运行的中位数；每次运行的原始请求记录仍保留在对应目录，不能把不同实验的中位数拼成一条新的样本分布。
 
 ## 1. 环境与数据范围
 
@@ -23,6 +23,7 @@
 | SLO 开环容量扫描 | 9 | 5,400 | `results/capacity/20260907-capacity/report.md` |
 | 三阶段 Prefix/KV Cache | 60 | 4,992 | `results/prefix-reports/20260913/`、`results/prefix-study/published-20260913/` |
 | 全局共享 vs 租户命名空间 | 8 | 768 | `results/prefix-reports/20260915/tenant.md`、`results/prefix-study/tenant-namespace-20260915/` |
+| Kubernetes 网关扩展（契约/清单；live Docker/K8s 待补） | 2 个静态子实验 | 5 个 gateway 用例 | `results/k8s/implementation-report.md`、本文第 10 节 |
 | 合计（不同实验批次相加） | 95 | 12,240 | 本文汇总，不把不同批次合并计算 |
 
 正式实验都在模型加载、编译和预热完成后开始；三阶段和租户实验在每次 run 前重置 GPU Prefix Cache、CPU L2 内容和 two-hit admission history。open-loop 记录实际到达率、dispatch lag、inflight 和 drain time，closed-loop 记录完成反馈下的吞吐。SLO goodput 包含最后一个请求的排空时间。
@@ -200,7 +201,31 @@ two-hit 把写入从 68 次降到 4 次，写入量从 952.16 降到 56.01 MiB�
 3. **Prometheus/系统采样**：记录 `prefix_cache_queries_total`、`prefix_cache_hits_total`、request queue/prefill/decode histogram、waiting/active KV gauge，并在可用时采样 GPU util、显存和温度。WDDM 下异常显存值会过滤并保留计数；GPU gauge 不能等同于所有可复用前缀占用。
 4. **旧 smoke/partial runs**：`actual-stage1-smoke`、`actual-stage2`、`stage1-partial` 和早期 `smoke-l2-run1.json` 用于排查链路或旧 workload，不参与本文正式表格。正式三阶段使用修正后的稳定前缀、冷请求、cache reset、counter 和 prompt hash 审计。
 
-## 10. 复现入口
+## 10. Kubernetes 网关扩展子实验（2026-09-21）
+
+这一组实验验证的是现有 vLLM 服务外面的网关、容器和 Kubernetes 运维能力，不改变 Prefix Cache、KV Cache、调度器或模型参数。它回答“加 Kubernetes 后项目多了什么能力”，而不是重新声称模型推理性能提升。
+
+### 10.1 K8S-1：网关契约实验
+
+在隔离的 gateway 测试环境执行 `python -m pytest -q tests/test_gateway.py`，结果为 **5 passed**。覆盖普通 `/v1/completions` 转发、SSE 转发与流关闭、上游 readiness 超时/错误、以及 Pod 身份信息。这个实验确认新网关的请求语义和探针语义。
+
+### 10.2 K8S-2：Kubernetes 清单实验
+
+执行 `kubectl kustomize k8s`，结果为 **PASS**。清单可渲染出 Namespace、ConfigMap、两副本 Deployment 和 ClusterIP Service；Deployment 含滚动更新参数、readiness/liveness 探针、资源 requests/limits 和上游地址配置。三个 PowerShell 脚本的语法检查也通过。这个实验确认部署定义可交付，但不等于已经在集群运行。
+
+### 10.3 K8S-3：Docker 镜像与容器烟测
+
+已启动 `E:\Docker\DockerDesktop\Docker Desktop.exe`，选择 `desktop-linux`，执行 `wsl --shutdown` 后重试。当前机器的 `wsl -l -v` 仍显示 `Ubuntu-24.04` 和 `docker-desktop` 为 `Stopped`；`docker info` 以及 `docker version` 的 Server 部分在有界等待内没有返回。因此镜像构建、容器启动和容器到上游的真实请求 **本次未能执行**，报告不填充虚构的镜像大小、启动时间或请求延迟。
+
+### 10.4 K8S-4：真实集群验收
+
+`kubectl config get-contexts` 没有当前 Kubernetes context，所以没有执行 `kubectl apply -k k8s`。Pod Ready 数、Service endpoint 分布、删除 Pod 后恢复时间、readiness/liveness 故障行为、滚动升级和回滚数据均标为 **未测**。这部分需要在 Docker Engine 正常且启用 Kubernetes 的机器上补测。
+
+### 10.5 面试中如何解释实验价值
+
+可以把结果拆成两层：K8S-1/K8S-2 已证明代码和部署契约，K8S-3/K8S-4 是环境尚未具备的 live acceptance。加入 Kubernetes 带来的能力是统一打包、服务发现、就绪摘流、存活重启、两副本滚动升级和回滚证据；它不是为了多跑几组 Prefix Cache 数据，也没有改变已有的推理性能结论。真正接通集群后，再用固定模型、固定 prompt、固定并发分别测网关开销和 Pod 恢复时间，并把这些运维指标和原有 TTFT/吞吐实验分开报告。
+
+## 11. 复现入口
 
 ```powershell
 # 历史基础矩阵
@@ -221,7 +246,7 @@ python -m vllm_serving_lab.prefix_report --stage tenant `
 
 三阶段报告生成器会检查完整矩阵、客户端与 Prometheus counter、open-loop 到达率、跨配置 prompt hash、CPU 容量和 L2 correctness。所有测量都依赖 Linux Docker engine、NVIDIA GPU 和本地模型缓存；换机器后应把结果视为新实验，不能直接复用这里的 latency 数字。
 
-## 11. 面试复述主线
+## 12. 面试复述主线
 
 可以按“流量局部性 -> GPU 容量 -> host tier 成本 -> 多租户隔离”复述：先用稳定前缀、追加历史、idle gap 和冷背景构造接近真实的会话流量；再固定 workload 扫 GPU KV 容量，证明 128 MiB 的重算和 256 MiB 左右的拐点；之后接入有限 CPU L2，比较普通 LRU 与 two-hit admission，用 loads/stores/bytes 和 PyTorch profile 拆开“重算、搬运、序列化、排队”；最后在相同物理池上加入 vLLM `cache_salt` 和同 namespace 的 CPU key，量化全局共享效率与租户隔离开销。
 
