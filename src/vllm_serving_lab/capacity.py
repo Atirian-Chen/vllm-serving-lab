@@ -21,12 +21,15 @@ from .workloads import build_workload
 async def measure(args, rate: float, repeat: int) -> dict:
     count = max(args.requests, math.ceil(rate * args.min_duration))
     seed = args.seed + repeat - 1
-    items = build_workload(args.workload, count, args.output_tokens, seed,
+    supplied_items = getattr(args, "items", None)
+    items = supplied_items if supplied_items is not None else build_workload(args.workload, count, args.output_tokens, seed,
                            sessions=args.sessions, rounds=args.rounds,
                            idle_gap_ms=args.idle_gap_ms,
                            background_unique_prefixes=args.background_unique_prefixes,
                            tenants=getattr(args, "tenants", 4),
                            tenant_namespace=getattr(args, "tenant_namespace", False))
+    if len(items) != count:
+        raise ValueError("Supplied trace length differs from the arrival plan")
     records = [None] * count
     results = [None] * count
     samples = []
@@ -136,7 +139,7 @@ async def measure(args, rate: float, repeat: int) -> dict:
     return {
         "schema_version": 1,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "config": {**vars(args), "output_dir": str(args.output_dir), "rate": rate,
+        "config": {**{k: v for k, v in vars(args).items() if k != "items"}, "output_dir": str(args.output_dir), "rate": rate,
                    "repeat": repeat, "request_count": count, "seed": seed,
                    "arrival": "uniform", "workload": args.workload},
         "summary": summary, "requests": records, "client_inflight": samples,

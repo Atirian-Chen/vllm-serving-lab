@@ -55,3 +55,19 @@ def test_streaming_client_keeps_request_failure_in_result() -> None:
 
     asyncio.run(exercise())
 
+
+def test_exact_token_trace_rejects_missing_done_and_truncated_output():
+    async def exercise():
+        for done, output in ((False, 2), (True, 1)):
+            async def handler(request):
+                assert request.headers["X-Request-Id"] == "exact"
+                body = ['data: {"choices":[{"text":"x"}]}',
+                        'data: '+json.dumps({"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":output}})]
+                if done: body.append('data: [DONE]')
+                return httpx.Response(200,content='\n'.join(body))
+            async with StreamingCompletionClient(ClientSettings('http://test','model'),
+                        transport=httpx.MockTransport(handler)) as client:
+                result = await client.generate(WorkloadItem('exact',[1,2,3],0,2),7)
+            assert not result.ok
+            assert 'contract' in result.error
+    asyncio.run(exercise())

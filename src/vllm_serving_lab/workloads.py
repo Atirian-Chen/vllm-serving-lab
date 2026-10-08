@@ -15,7 +15,7 @@ COMMON_WORDS = (
 @dataclass(frozen=True)
 class WorkloadItem:
     request_id: str
-    prompt: str
+    prompt: str | list[int]
     target_prompt_words: int
     output_tokens: int
     session_id: str | None = None

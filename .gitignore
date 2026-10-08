@@ -35,3 +35,7 @@ results/prefix-reports/20260915/*
 !results/prefix-reports/20260915/tenant.audit.json
 results/prefix-study/*
 !results/prefix-study/published-20260913/
+
+# Keep diagnostics separate from the audited replacement-policy publication.
+results/cache-policy/*
+!results/cache-policy/20261008-policy-study/

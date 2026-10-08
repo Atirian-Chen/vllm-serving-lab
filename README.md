@@ -9,6 +9,23 @@ A compact, reproducible single-GPU serving benchmark for four practical vLLM top
 - Prefix caching for requests that share a long prompt prefix.
 - Capacity under joint TTFT/TPOT constraints with a fixed request arrival rate.
 
+## CPU L2 replacement-policy study
+
+The [registered study plan](docs/cache-policy-plan.md) compares LRU, resident LFU
+(LRU tie break, no aging), and classic equal-entry ARC through the same synchronous
+CPU data path. It specifies 56 core configurations plus eight long-output controls:
+128/512 MiB CPU budgets, 640/1664-token inputs, and stable-hotspot, scan,
+hotspot-shift and zero-reuse traces. GPU-only is an independent baseline.
+
+`python -m vllm_serving_lab.policy_study --output results/cache-policy/20261008-policy-study --phase all`
+runs checkpointed closed-loop throughput, adaptive open-loop exploration, three-seed
+300-second boundary confirmations and equal-arrival-rate controls. After every
+configuration finishes, `python -m vllm_serving_lab.policy_report --input
+results/cache-policy/20261008-policy-study --update-total` audits paired traces,
+fixed-token contracts, CPU budgets, full-drain goodput and complete matrices before
+adding actual results to the consolidated report. Preflight and diagnostics remain
+separate; they do not establish capacity.
+
 The project deliberately stays small. It uses the official vLLM OpenAI-compatible server, a shared asynchronous Python client, and PowerShell experiment runners. The optional `gateway/` and `k8s/` extension adds a small CPU gateway deployment around the existing GPU server; it does not move vLLM into a Kubernetes GPU cluster.
 
 ## Kubernetes gateway extension

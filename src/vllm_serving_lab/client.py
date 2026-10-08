@@ -70,10 +70,13 @@ class StreamingCompletionClient:
         first_token_at: float | None = None
         prompt_tokens: int | None = None
         output_tokens: int | None = None
+        saw_done = False
         status_code: int | None = None
 
         try:
-            async with self._client.stream("POST", "/v1/completions", json=payload) as response:
+            request_headers = {"X-Request-Id": item.request_id} if isinstance(item.prompt, list) else {}
+            async with self._client.stream("POST", "/v1/completions", json=payload,
+                                           headers=request_headers) as response:
                 status_code = response.status_code
                 response.raise_for_status()
 
@@ -81,7 +84,10 @@ class StreamingCompletionClient:
                     if not line.startswith("data:"):
                         continue
                     data = line[5:].strip()
-                    if not data or data == "[DONE]":
+                    if data == "[DONE]":
+                        saw_done = True
+                        continue
+                    if not data:
                         continue
 
                     event = json.loads(data)
@@ -99,6 +105,9 @@ class StreamingCompletionClient:
                 raise RuntimeError("stream completed without a non-empty token event")
             if prompt_tokens is None or output_tokens is None:
                 raise RuntimeError("stream completed without usage; the server must support include_usage")
+            if isinstance(item.prompt, list):
+                if not saw_done or prompt_tokens != len(item.prompt) or output_tokens != item.output_tokens:
+                    raise RuntimeError("Token-ID experiment violated DONE/usage/fixed-length contract")
 
             latency_ms = (finished - started) * 1000
             ttft_ms = (first_token_at - started) * 1000

@@ -5,6 +5,7 @@ param(
 
     [Parameter(Mandatory = $true)]
     [string]$Image,
+    [string]$ModelRevision,
 
     [Parameter(Mandatory = $true)]
     [int]$MaxNumSeqs,
@@ -21,6 +22,8 @@ param(
     [long]$CpuKvCacheBytes = 0,
     [ValidateSet("lru", "two_hit")]
     [string]$CpuKvAdmissionPolicy = "lru",
+    [ValidateSet("legacy", "lru", "lfu", "arc")]
+    [string]$CpuKvEvictionPolicy = "legacy",
     [string]$CpuKvCachePath,
     [switch]$CpuKvCacheTmpfs,
     [string]$ProfilePath,
@@ -113,6 +116,7 @@ $dockerArgs += @(
 if ($KvCacheMemoryBytes -gt 0) {
     $dockerArgs += @("--kv-cache-memory-bytes", "$KvCacheMemoryBytes")
 }
+if ($ModelRevision) { $dockerArgs += @("--revision", $ModelRevision) }
 if ($DisableChunkedPrefill) {
     $dockerArgs += @("--no-enable-chunked-prefill", "--max-num-batched-tokens", "8192")
 }
@@ -128,6 +132,13 @@ if ($EnableCpuKvCache) {
             prefix_tokens = 512
         }
     } | ConvertTo-Json -Depth 5 -Compress
+    if ($CpuKvEvictionPolicy -ne "legacy") {
+        $policyConfig = $transferConfig | ConvertFrom-Json
+        $policyConfig.kv_connector = "PolicyCpuL2Connector"
+        $policyConfig.kv_connector_module_path = "vllm_serving_lab.policy_connector"
+        $policyConfig.kv_connector_extra_config | Add-Member -NotePropertyName eviction_policy -NotePropertyValue $CpuKvEvictionPolicy
+        $transferConfig = $policyConfig | ConvertTo-Json -Depth 5 -Compress
+    }
     $dockerArgs += @(
         "--kv-transfer-config",
         $transferConfig

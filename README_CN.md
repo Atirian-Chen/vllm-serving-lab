@@ -2,6 +2,10 @@
 
 这是一个刻意控制范围的单卡 vLLM 实验项目，覆盖四个推理服务评测方向：
 
+新增的 [CPU L2 替换策略实验方案](docs/cache-policy-plan.md) 对照 LRU、LFU（频次并列按 LRU，无 aging）和经典等大对象 ARC。三组共用准入、同步读写和容量预留路径，包含 56 个主配置与 8 个长输出扩展；分别测闭环吞吐和三轮长窗口确认的开环达标速率。GPU-only 独立作基线。
+
+运行 `python -m vllm_serving_lab.policy_study --output results/cache-policy/20261008-policy-study --phase all`，完成后用 `python -m vllm_serving_lab.policy_report --input results/cache-policy/20261008-policy-study --update-total` 审计并录入真实结果。执行器可从已完成轮次恢复；预实验与正式结果分开。完整后台流程及完成后的 GitHub 推送见 `scripts/Complete-PolicyStudy.ps1`。
+
 - 使用 Paged KV Cache 处理混合长度请求。
 - 评测 Continuous Batching 在不同并发与最大活跃序列数下的吞吐和延迟。
 - 对共享长前缀流量进行 Prefix Cache 开关实验。
