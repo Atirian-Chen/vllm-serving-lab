@@ -48,15 +48,6 @@ public static class PolicyDockerRetry {
         catch (IOException) { } // Diagnostics cannot change the command's result.
     }
 
-    static bool StudyContainerLookup(string[] args) {
-        // Docker Desktop's name-filter query can stall on this host. Inspect
-        // the one owned container instead; retain ps's empty-success result
-        // when that container does not exist. Never broaden mutation targets.
-        return args.Length == 5 && args[0] == "ps" && args[1] == "--all" &&
-            args[2] == "--quiet" && args[3] == "--filter" &&
-            args[4] == "name=^/vllm-serving-lab-cache-policy$";
-    }
-
     public static int Main(string[] args) {
         string native = Environment.GetEnvironmentVariable("POLICY_DOCKER_NATIVE_EXE");
         if (String.IsNullOrEmpty(native) || !File.Exists(native)) {
@@ -64,8 +55,6 @@ public static class PolicyDockerRetry {
             return 125;
         }
         Console.OutputEncoding = new UTF8Encoding(false);
-        bool studyLookup=StudyContainerLookup(args);
-        if (studyLookup) args=new string[] { "inspect", "--format", "{{.Id}}", "vllm-serving-lab-cache-policy" };
         var quoted = new string[args.Length];
         for (int i=0;i<args.Length;i++) quoted[i]=Quote(args[i]);
         bool query=ReadOnly(args);
@@ -84,9 +73,6 @@ public static class PolicyDockerRetry {
                     Log("command="+args[0]+" attempt="+attempt+" readonly=true timeout=15s");
                 }
                 process.WaitForExit();Task.WaitAll(stdout,stderr);
-                if (studyLookup && !timedOut && process.ExitCode==1 &&
-                    (stderr.Result.Contains("No such object: vllm-serving-lab-cache-policy") ||
-                     stderr.Result.Contains("No such container: vllm-serving-lab-cache-policy"))) return 0;
                 bool allocationFailure=stderr.Result.Contains("cannot allocate memory") ||
                                        stderr.Result.Contains("fatal error: out of memory");
                 if (process.ExitCode!=0) {

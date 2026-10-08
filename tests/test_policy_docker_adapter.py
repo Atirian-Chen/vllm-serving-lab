@@ -83,16 +83,18 @@ def test_mutations_are_not_replayed(binaries, tmp_path):
     assert calls == [args]
 
 
-@pytest.mark.parametrize("mode,code", [("missing", 0), ("daemon-error", 1)])
-def test_exact_owned_lookup_preserves_missing_and_error_semantics(binaries, tmp_path, mode, code):
-    result, calls = execute(binaries, tmp_path, mode,
-        ["ps", "--all", "--quiet", "--filter", "name=^/vllm-serving-lab-cache-policy$"])
-    assert result.returncode == code
-    assert calls == [["inspect", "--format", "{{.Id}}", "vllm-serving-lab-cache-policy"]]
-    if mode == "missing":
-        assert result.stdout == result.stderr == ""
-    else:
-        assert "Cannot connect" in result.stderr
+def test_name_filter_is_not_replaced_by_a_cached_inspect_query(binaries, tmp_path):
+    args = ["ps", "--all", "--quiet", "--filter", "name=^/vllm-serving-lab-cache-policy$"]
+    result, calls = execute(binaries, tmp_path, "success", args)
+    assert result.returncode == 0
+    assert calls == [args]
+
+
+def test_daemon_failure_is_preserved_without_retry(binaries, tmp_path):
+    result, calls = execute(binaries, tmp_path, "daemon-error", ["version"])
+    assert result.returncode == 1
+    assert calls == [["version"]]
+    assert "Cannot connect" in result.stderr
 
 
 def test_stalled_read_only_query_is_killed_and_retried(binaries, tmp_path):
