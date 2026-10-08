@@ -53,6 +53,8 @@
 
 选择 GPU 256 MiB，是因为既有日志对应约 9360-token pool，能覆盖并发 4 的长输入活动集，同时 32 个 512-token 热前缀总计 16384 token，超过 GPU pool。实际 pool 必须在新启动日志复核。不得按不同 CPU 策略分别调整 GPU 容量。
 
+2026-10-08 执行复核：新日志的实际 GPU KV pool 为 9360 token。vLLM 0.10.2 的 V1 分支在 arg_utils.py 中强制 enable_chunked_prefill=True，即使命令行传入 --no-enable-chunked-prefill。本批按此实际 V1 行为记录；所有组同样使用 8192-token batch budget 和最多 4 个 active sequences，最长一批输入 4×1664=6656 token，不通过该参数差异改变组间调度。CLI 参数与实际初始化日志均保留，不能宣称框架关闭了 chunked prefill。
+
 每个 prefix 的首个 16-token block 即区分 key，避免不同 key 意外共享大段 GPU prefix。相同 key 的最前 512 token 完全一致，后缀随请求改变。长度通过模型 tokenizer 和实际 usage 校验，使用 token 数，不使用单词数；必要时扩展客户端以接受 token-ID prompt。
 
 ## 4. 自变量：容量、请求类型、访问模式
