@@ -31,6 +31,9 @@ public class NativeFixture {
         if(mode=="daemon-error") {
             Console.Error.WriteLine("Cannot connect to the Docker daemon"); return 1;
         }
+        if(mode.StartsWith("state:")) {
+            Console.WriteLine(mode.Substring(6)); return 0;
+        }
         if(mode=="allocation" && previous==0) {
             Console.Error.WriteLine("fatal error: runtime: cannot allocate memory"); return 2;
         }
@@ -103,3 +106,20 @@ def test_stalled_read_only_query_is_killed_and_retried(binaries, tmp_path):
     assert result.returncode == 0
     assert calls == [args, args]
     assert "timeout=15s" in (tmp_path / "retry.log").read_text()
+
+
+@pytest.mark.parametrize("state,output", [("running", "true"), ("exited", "false"), ("", "false")])
+def test_startup_probe_uses_real_engine_and_preserves_exit_detection(binaries, tmp_path, state, output):
+    result, calls = execute(binaries, tmp_path, "state:"+state,
+        ["inspect", "--format", "{{.State.Running}}", "vllm-serving-lab-cache-policy"])
+    assert result.returncode == 0
+    assert result.stdout.strip() == output
+    assert calls == [["ps", "--all", "--filter", "name=^/vllm-serving-lab-cache-policy$", "--format", "{{.State}}"]]
+
+
+def test_startup_probe_does_not_hide_an_engine_error(binaries, tmp_path):
+    result, calls = execute(binaries, tmp_path, "daemon-error",
+        ["inspect", "--format", "{{.State.Running}}", "vllm-serving-lab-cache-policy"])
+    assert result.returncode == 1
+    assert "Cannot connect" in result.stderr
+    assert len(calls) == 1

@@ -55,6 +55,16 @@ public static class PolicyDockerRetry {
             return 125;
         }
         Console.OutputEncoding = new UTF8Encoding(false);
+        bool liveRunningProbe = args.Length == 4 && args[0] == "inspect" &&
+            args[1] == "--format" && args[2] == "{{.State.Running}}" &&
+            args[3] == "vllm-serving-lab-cache-policy";
+        if (liveRunningProbe) {
+            // Docker Desktop may serve inspect from its API cache. A filtered
+            // list is forwarded to the engine; change only our startup probe,
+            // preserving metadata inspect and every mutation verbatim.
+            args = new string[] { "ps", "--all", "--filter",
+                "name=^/vllm-serving-lab-cache-policy$", "--format", "{{.State}}" };
+        }
         var quoted = new string[args.Length];
         for (int i=0;i<args.Length;i++) quoted[i]=Quote(args[i]);
         bool query=ReadOnly(args);
@@ -86,6 +96,19 @@ public static class PolicyDockerRetry {
                 if (timedOut) {
                     Console.Error.WriteLine("Docker read-only query exceeded 15s on all retry attempts.");
                     return 124;
+                }
+                if (liveRunningProbe && process.ExitCode == 0) {
+                    string state = stdout.Result.Trim();
+                    if (state == "running" || state == "paused") Console.Out.WriteLine("true");
+                    else if (state == "" || state == "created" || state == "restarting" ||
+                             state == "exited" || state == "removing" || state == "dead") Console.Out.WriteLine("false");
+                    else {
+                        Log("unexpected engine state="+state);
+                        Console.Error.WriteLine("Unexpected Docker engine state for the study container");
+                        return 125;
+                    }
+                    Console.Error.Write(stderr.Result);
+                    return 0;
                 }
                 Console.Out.Write(stdout.Result);Console.Error.Write(stderr.Result);
                 return process.ExitCode;
