@@ -1,0 +1,2 @@
+# Optional offline report rendering; separate from the serving environment.
+matplotlib==3.10.7
