@@ -251,3 +251,57 @@ python -m vllm_serving_lab.prefix_report --stage tenant `
 可以按“流量局部性 -> GPU 容量 -> host tier 成本 -> 多租户隔离”复述：先用稳定前缀、追加历史、idle gap 和冷背景构造接近真实的会话流量；再固定 workload 扫 GPU KV 容量，证明 128 MiB 的重算和 256 MiB 左右的拐点；之后接入有限 CPU L2，比较普通 LRU 与 two-hit admission，用 loads/stores/bytes 和 PyTorch profile 拆开“重算、搬运、序列化、排队”；最后在相同物理池上加入 vLLM `cache_salt` 和同 namespace 的 CPU key，量化全局共享效率与租户隔离开销。
 
 需要明确的边界是：Continuous Batching、Paged KV Cache、原生 Prefix Cache 和 scheduler 来自 vLLM；本项目实现的是 workload、可复现实验编排、容量受限的 CPU L2 connector、LRU/two-hit admission、租户 namespace 对照和数据审计。这里的同步 tmpfs L2 证明了 trade-off 和测量方法，不等于生产级异步 offload、分布式 KV 服务或普适的端到端加速。
+
+<!-- policy-quick-summary:start -->
+## 13. CPU L2 LRU / LFU / ARC（2026-10-10 简化收束）
+
+已完成并审计：正式闭环168轮、161,280请求；独立快速批次约3.87小时，闭环诊断56轮、10,080请求、开环24个筛查边界。正式吞吐与快速容量分开使用，完整原计划仍有暂缓部分。
+
+固定 GPU KV 256 MiB、CPU 128/512 MiB、并发4、640/1664输入与32输出token。三策略共用同步 tmpfs/safetensors 数据路径和准入；区别是CPU L2淘汰策略，不是vLLM请求调度算法。
+
+### 13.1 正式吞吐（三种子中位数）
+
+| 场景 | 输入 token | CPU MiB | GPU-only req/s | LRU req/s | LFU req/s | ARC req/s |
+|---|---:|---:|---:|---:|---:|---:|
+| stable | 640 | 128 | 6.046 | 5.908 | 5.877 | 5.922 |
+| stable | 640 | 512 | 6.046 | 6.162 | 6.261 | 6.287 |
+| stable | 1664 | 128 | 3.660 | 3.738 | 3.791 | 3.802 |
+| stable | 1664 | 512 | 3.660 | 3.921 | 3.990 | 3.990 |
+| scan | 640 | 128 | 5.298 | 5.072 | 5.079 | 5.069 |
+| scan | 640 | 512 | 5.298 | 5.919 | 6.142 | 6.139 |
+| scan | 1664 | 128 | 3.458 | 3.432 | 3.438 | 3.449 |
+| scan | 1664 | 512 | 3.458 | 3.869 | 3.903 | 3.966 |
+| shift | 640 | 128 | 5.997 | 5.882 | 5.873 | 5.859 |
+| shift | 640 | 512 | 5.997 | 6.098 | 5.653 | 6.132 |
+| shift | 1664 | 128 | 3.693 | 3.732 | 3.706 | 3.793 |
+| shift | 1664 | 512 | 3.693 | 3.899 | 3.550 | 3.925 |
+| unique | 640 | 128 | 5.234 | 5.055 | 5.054 | 5.079 |
+| unique | 640 | 512 | 5.234 | 5.037 | 4.834 | 5.047 |
+| unique | 1664 | 128 | 3.434 | 3.412 | 3.423 | 3.439 |
+| unique | 1664 | 512 | 3.434 | 3.437 | 3.201 | 3.446 |
+
+### 13.2 单种子开环筛查
+
+| 场景 | 输入 token | CPU MiB | LRU 通过/失败 req/s | LFU 通过/失败 req/s | ARC 通过/失败 req/s |
+|---|---:|---:|---|---|---|
+| stable | 640 | 128 | 4 / 6 | 4 / 6 | 4 / 6 |
+| stable | 640 | 512 | 4 / 6 | 6 / 8 | 6 / 8 |
+| scan | 640 | 128 | 4 / 6 | 4 / 6 | 4 / 6 |
+| scan | 640 | 512 | 4 / 6 | 4 / 6 | 4 / 6 |
+| shift | 1664 | 128 | 2 / 4 | 2 / 4 | 2 / 4 |
+| shift | 1664 | 512 | 2 / 4 | 2 / 4 | 2 / 4 |
+| unique | 1664 | 128 | 2 / 4 | 2 / 4 | 2 / 4 |
+| unique | 1664 | 512 | 2 / 4 | 2 / 4 | 2 / 4 |
+
+联合SLO为请求成功、TTFT≤1000ms、TPOT≤50ms/token，满足比例至少95%。普通点nominal45秒、最低60请求；扫描点最低320请求覆盖热点→扫描→回访，实际窗口由请求数/速率决定。确认复用seed101，网格较粗，表中失败点不是精确最大容量。
+
+开环稳定短请求中，512 MiB 的 LFU/ARC 在本次短窗口通过 6 req/s、8 req/s 失败；LRU 在 4 req/s 通过、6 req/s 失败。128 MiB 三种策略都在 4 req/s 通过、6 req/s 失败。这个差异仅来自单种子、固定策略顺序的筛查，不能排除时间和温度影响。
+
+扫描短请求均得到 4 通过、6 失败；热点切换长请求与无复用长请求均得到 2 通过、4 失败。网格没有区分这些组内的精细容量差异，不能将相同通过点解释成策略性能完全相同，也不能把通过点当成精确最大速率。
+
+正式闭环覆盖完整场景×长度交叉矩阵；开环为四个代表性组合，短请求只含 stable/scan、长请求只含 shift/unique，因此开环结果不能单独分离输入长度与访问模式的主效应。吞吐范围和 CPU 回载等机制指标见 CSV。
+
+本轮完成的是用户简化后的范围。原完整批次的开环数据保留为 partial，不计入本轮容量结论；300 秒三种子确认、同速率控制、GPU-only 开环、其余长度组合和长输出扩展暂缓。
+
+[完整报告与复现](cache-policy/20261010-policy-study-quick/QUICK-REPORT.md) · [审计](cache-policy/20261010-policy-study-quick/audit.json) · [正式吞吐明细](cache-policy/20261010-policy-study-quick/closed-formal-summary.csv) · [开环明细](cache-policy/20261010-policy-study-quick/capacity-screen-summary.csv)
+<!-- policy-quick-summary:end -->

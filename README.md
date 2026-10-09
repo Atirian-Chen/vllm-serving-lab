@@ -26,6 +26,22 @@ fixed-token contracts, CPU budgets, full-drain goodput and complete matrices bef
 adding actual results to the consolidated report. Preflight and diagnostics remain
 separate; they do not establish capacity.
 
+The [preflight audit](results/cache-policy/20261008-policy-study/PREFLIGHT.md)
+retains 14 completed pilot cases, reload checks and excluded diagnostics. Formal
+measurements are checkpointed separately; this preflight document does not claim
+that the full matrix has completed.
+
+The user-requested ten-hour profile is now complete in **3.87 hours**:
+[formal throughput and quick open-loop screening](results/cache-policy/20261010-policy-study-quick/QUICK-REPORT.md).
+Main throughput uses the completed 56 configurations × three seeds × 960 requests;
+the new batch adds 56 short diagnostic runs and 24 single-seed capacity screens.
+Scan screens retain a full 320-request cycle. Short diagnostic scans are excluded
+from the main throughput table. The reported passing/failing grid points do not
+establish an exact maximum rate. Full 300-second confirmations, common-load
+controls and long-output extensions remain deferred. Reproduce with
+`scripts/Run-QuickPolicyStudy.ps1`; regenerate the audited consolidated section
+with `python scripts/Write-QuickPolicyReport.py --update-total`.
+
 The project deliberately stays small. It uses the official vLLM OpenAI-compatible server, a shared asynchronous Python client, and PowerShell experiment runners. The optional `gateway/` and `k8s/` extension adds a small CPU gateway deployment around the existing GPU server; it does not move vLLM into a Kubernetes GPU cluster.
 
 ## Kubernetes gateway extension

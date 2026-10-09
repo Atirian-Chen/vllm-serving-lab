@@ -2,9 +2,13 @@
 
 这是一个刻意控制范围的单卡 vLLM 实验项目，覆盖四个推理服务评测方向：
 
-新增的 [CPU L2 替换策略实验方案](docs/cache-policy-plan.md) 对照 LRU、LFU（频次并列按 LRU，无 aging）和经典等大对象 ARC。三组共用准入、同步读写和容量预留路径，包含 56 个主配置与 8 个长输出扩展；分别测闭环吞吐和三轮长窗口确认的开环达标速率。GPU-only 独立作基线。
+新增的 [CPU L2 替换策略实验方案](docs/cache-policy-plan.md) 对照 LRU、LFU（频次并列按 LRU，无 aging）和经典等大对象 ARC。三组共用准入、同步读写和容量预留路径，GPU-only 独立作基线。原设计包含56个主配置与8个长输出扩展；本轮按10小时内收束要求简化执行。
 
-运行 `python -m vllm_serving_lab.policy_study --output results/cache-policy/20261008-policy-study --phase all`，完成后用 `python -m vllm_serving_lab.policy_report --input results/cache-policy/20261008-policy-study --update-total` 审计并录入真实结果。执行器可从已完成轮次恢复；预实验与正式结果分开。完整后台流程及完成后的 GitHub 推送见 `scripts/Complete-PolicyStudy.ps1`。
+[预实验审计](results/cache-policy/20261008-policy-study/PREFLIGHT.md) 已归档14个配置、4480个请求及回载检查，保留被排除的早期诊断。正式矩阵独立保存断点，预实验文档不代表全批完成。
+
+[正式吞吐与快速开环报告](results/cache-policy/20261010-policy-study-quick/QUICK-REPORT.md) 已完成：正式闭环56配置×3种子×960请求；快速批次约3.87小时，另含56个短闭环诊断和24个单种子开环筛查边界。扫描场景保留完整320请求周期，180请求诊断不参与主吞吐结论。开环给出已测通过/失败点，未宣称精确最大容量；300秒三种子确认、同速率对照和长输出扩展暂缓。结果已录入[实验总报告](results/EXPERIMENT-REPORT.md)。
+
+快速批次由 `scripts/Run-QuickPolicyStudy.ps1` 编排，报告由 `python scripts/Write-QuickPolicyReport.py --update-total` 重新审计生成。原完整实验保留断点；`scripts/Complete-PolicyStudy.ps1` 仍对应原完整范围，不能用它将本轮简化数据宣称为完整原矩阵。
 
 - 使用 Paged KV Cache 处理混合长度请求。
 - 评测 Continuous Batching 在不同并发与最大活跃序列数下的吞吐和延迟。

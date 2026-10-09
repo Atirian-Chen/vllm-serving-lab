@@ -38,4 +38,4 @@ results/prefix-study/*
 
 # Keep diagnostics separate from the audited replacement-policy publication.
 results/cache-policy/*
-!results/cache-policy/20261008-policy-study/
+!results/cache-policy/20261010-policy-study-quick/
